@@ -20,7 +20,7 @@ import json
 from typing import Any, Dict
 
 # --- Google Cloud Secret Manager Setup ---
-def get_secret_value(project_id, secret_id, version_id="latest"):
+def get_secret_value(project_id, secret_id, version_id="1"):
     """Access the payload for the given secret version if one exists.
     
     Args:
@@ -47,25 +47,23 @@ def get_secret_value(project_id, secret_id, version_id="latest"):
 PROJECT_ID = os.environ.get("GCP_PROJECT")
 API_KEY_SECRET_ID = "gemini_key"
 
-# Try to get API key from Secret Manager first, fallback to env var for local dev
-GOOGLE_API_KEY = None
-if PROJECT_ID:
-    print(f"[STARTUP] GCP_PROJECT detected: {PROJECT_ID}")
-    print(f"[STARTUP] Attempting to retrieve API key from Secret Manager...")
-    GOOGLE_API_KEY = get_secret_value(PROJECT_ID, API_KEY_SECRET_ID)
-    if GOOGLE_API_KEY:
-        print("[STARTUP] ✓ API key retrieved from Secret Manager")
+# Try environment variable FIRST (Cloud Run sets this via --set-secrets)
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if GOOGLE_API_KEY:
+    print("[STARTUP] ✓ API key found in GOOGLE_API_KEY environment variable")
+else:
+    print("[STARTUP] GOOGLE_API_KEY not in environment, trying Secret Manager...")
+    # Fallback to Secret Manager for other deployment scenarios
+    if PROJECT_ID:
+        print(f"[STARTUP] GCP_PROJECT detected: {PROJECT_ID}")
+        print(f"[STARTUP] Attempting to retrieve API key from Secret Manager...")
+        GOOGLE_API_KEY = get_secret_value(PROJECT_ID, API_KEY_SECRET_ID)
+        if GOOGLE_API_KEY:
+            print("[STARTUP] ✓ API key retrieved from Secret Manager")
+        else:
+            print("[STARTUP] ✗ Failed to retrieve API key from Secret Manager")
     else:
-        print("[STARTUP] ✗ Failed to retrieve API key from Secret Manager")
-
-# Fallback to environment variable for local development
-if not GOOGLE_API_KEY:
-    print("[STARTUP] Falling back to GOOGLE_API_KEY environment variable")
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    if GOOGLE_API_KEY:
-        print("[STARTUP] ✓ API key found in environment variable")
-    else:
-        print("[STARTUP] ✗ No API key found in environment variable")
+        print("[STARTUP] ✗ No GCP_PROJECT found, cannot use Secret Manager")
 
 USE_AI = bool(os.getenv("OPENAI_API_KEY"))
 try:
