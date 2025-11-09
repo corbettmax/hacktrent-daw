@@ -7,9 +7,8 @@ steps:
       - 'gcr.io/$PROJECT_ID/hacktrent-backend:$COMMIT_SHA'
       - '-t'
       - 'gcr.io/$PROJECT_ID/hacktrent-backend:latest'
-      - '-f'
-      - 'backend/Dockerfile'
-      - './backend'
+      - '--target=backend'
+      - '.'
     id: 'build-backend'
 
   # Build frontend image
@@ -20,9 +19,8 @@ steps:
       - 'gcr.io/$PROJECT_ID/hacktrent-frontend:$COMMIT_SHA'
       - '-t'
       - 'gcr.io/$PROJECT_ID/hacktrent-frontend:latest'
-      - '-f'
-      - 'frontend/Dockerfile.prod'
-      - './frontend'
+      - '--target=frontend'
+      - '.'
     id: 'build-frontend'
 
   # Push backend image to Container Registry
