@@ -46,11 +46,19 @@ export default function AICommandPanel({
           <Button
             onClick={onGenerate}
             disabled={isGenerating || !currentPrompt.trim()}
-            className="bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity shadow-lg"
             size="lg"
           >
-            <Sparkles className="mr-2 h-4 w-4" />
-            Generate Sound
+            {isGenerating ? (
+              <>
+                <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Generate Sound
+              </>
+            )}
           </Button>
           
           <Button

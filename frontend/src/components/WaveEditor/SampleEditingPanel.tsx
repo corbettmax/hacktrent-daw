@@ -17,18 +17,18 @@ export default function SampleEditingPanel({
   onFadeOut,
 }: SampleEditingPanelProps) {
   return (
-    <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg">
+    <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg h-full flex flex-col">
       <CardHeader>
         <CardTitle className="text-lg">Sample Editing</CardTitle>
         <p className="text-xs text-muted-foreground">Modify your audio sample</p>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-4 flex-1">
         <Button
           onClick={onNormalize}
           disabled={!hasBuffer}
           variant="outline"
           className="w-full justify-start"
-          size="sm"
+          size="default"
         >
           Normalize
         </Button>
@@ -37,7 +37,7 @@ export default function SampleEditingPanel({
           disabled={!hasBuffer}
           variant="outline"
           className="w-full justify-start"
-          size="sm"
+          size="default"
         >
           Reverse
         </Button>
@@ -46,7 +46,7 @@ export default function SampleEditingPanel({
           disabled={!hasBuffer}
           variant="outline"
           className="w-full justify-start"
-          size="sm"
+          size="default"
         >
           Fade In
         </Button>
@@ -55,7 +55,7 @@ export default function SampleEditingPanel({
           disabled={!hasBuffer}
           variant="outline"
           className="w-full justify-start"
-          size="sm"
+          size="default"
         >
           Fade Out
         </Button>

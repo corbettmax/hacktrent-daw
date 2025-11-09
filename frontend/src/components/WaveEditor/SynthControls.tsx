@@ -19,13 +19,13 @@ export default function SynthControls({
   onDurationChange,
 }: SynthControlsProps) {
   return (
-    <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg">
+    <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg h-full flex flex-col">
       <CardHeader>
         <CardTitle className="text-lg">Sound Parameters</CardTitle>
         <p className="text-xs text-muted-foreground">Adjust frequency, volume, and duration</p>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="space-y-3">
+      <CardContent className="space-y-8 flex-1">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-xs text-muted-foreground">Frequency</label>
             <span className="text-xs font-medium">{frequency} Hz</span>
@@ -40,7 +40,7 @@ export default function SynthControls({
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-xs text-muted-foreground">Volume</label>
             <span className="text-xs font-medium">{Math.round(amplitude * 100)}%</span>
@@ -55,7 +55,7 @@ export default function SynthControls({
           />
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-xs text-muted-foreground">Duration</label>
             <span className="text-xs font-medium">{duration.toFixed(2)}s</span>

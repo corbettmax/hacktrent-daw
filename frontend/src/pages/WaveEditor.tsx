@@ -12,7 +12,6 @@ import WaveformSelector from '../components/WaveEditor/WaveformSelector';
 import SynthControls from '../components/WaveEditor/SynthControls';
 import SampleEditingPanel from '../components/WaveEditor/SampleEditingPanel';
 import ADSREnvelope from '../components/WaveEditor/ADSREnvelope';
-import PresetsManager from '../components/WaveEditor/PresetsManager';
 import AIHistoryModal from '../components/WaveEditor/AIHistoryModal';
 
 interface WavePreset {
@@ -45,7 +44,21 @@ interface AiMessage {
   };
 }
 
-export default function WaveEditor() {
+interface WaveEditorProps {
+  onAddTrackToDrumMachine?: (name: string, buffer: AudioBuffer) => void;
+  onSwitchToSequencer?: () => void;
+  editingTrackIndex?: number;
+  editingTrackBuffer?: AudioBuffer | null;
+  onUpdateTrack?: (trackIndex: number, buffer: AudioBuffer) => void;
+}
+
+export default function WaveEditor({ 
+  onAddTrackToDrumMachine, 
+  onSwitchToSequencer,
+  editingTrackIndex,
+  editingTrackBuffer,
+  onUpdateTrack
+}: WaveEditorProps = {}) {
   const { identity } = useInternetIdentity();
   const [isPlaying, setIsPlaying] = useState(false);
   const [waveform, setWaveform] = useState<'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise'>('sine');
@@ -467,6 +480,18 @@ export default function WaveEditor() {
     }
   };
 
+  const handleSave = async () => {
+    // If editing a track, update it instead of saving as preset
+    if (editingTrackIndex !== undefined && onUpdateTrack && currentBuffer) {
+      onUpdateTrack(editingTrackIndex, currentBuffer);
+      onSwitchToSequencer?.();
+      toast.success('Track updated!');
+    } else {
+      // Otherwise save as preset
+      await savePreset();
+    }
+  };
+
   const loadPreset = (preset: WavePreset) => {
     setWaveform(preset.waveform);
     setFrequency(preset.frequency);
@@ -478,21 +503,59 @@ export default function WaveEditor() {
     toast.success(`Loaded preset: ${preset.name}`);
   };
 
+  const handleAddToDrumMachine = () => {
+    if (!currentBuffer) {
+      toast.error('No sample to add. Generate a sound first!');
+      return;
+    }
+
+    if (!onAddTrackToDrumMachine || !onSwitchToSequencer) {
+      toast.error('Drum machine integration not available');
+      return;
+    }
+
+    // Generate a name based on whether it's AI generated or manual
+    const trackName = isAiGenerated && aiPrompt 
+      ? aiPrompt.substring(0, 20) + (aiPrompt.length > 20 ? '...' : '')
+      : `${waveform} ${frequency}Hz`;
+
+    onAddTrackToDrumMachine(trackName, currentBuffer);
+    onSwitchToSequencer();
+    toast.success(`Added "${trackName}" to drum machine!`);
+  };
+
   const handleNoteOn = async (noteFrequency: number) => {
     if (!audioEngineRef.current) return;
 
     try {
-      // Generate a sample at the keyboard frequency
-      const buffer = await audioEngineRef.current.createSampleFromJSON({
-        waveform,
-        frequency: noteFrequency,
-        duration: 0.5,
-        amplitude,
-        envelope,
-        harmonics: [],
-      });
-
-      audioEngineRef.current.playSound(buffer, 1);
+      // If we have a current buffer, use it with pitch shifting
+      // Otherwise generate a new sample at the keyboard frequency
+      if (currentBuffer) {
+        // Calculate playback rate to shift the current sample to the target frequency
+        const playbackRate = noteFrequency / frequency;
+        audioEngineRef.current.playSound(currentBuffer, playbackRate);
+        
+        // Trigger waveform animation
+        setIsPlaying(true);
+        // Calculate duration based on buffer length and playback rate
+        const noteDuration = (currentBuffer.duration / playbackRate) * 1000;
+        setTimeout(() => setIsPlaying(false), noteDuration);
+      } else {
+        // Fallback: generate a sample at the keyboard frequency
+        const buffer = await audioEngineRef.current.createSampleFromJSON({
+          waveform,
+          frequency: noteFrequency,
+          duration: 0.5,
+          amplitude,
+          envelope,
+          harmonics: [],
+        });
+        audioEngineRef.current.playSound(buffer, 1);
+        
+        // Trigger waveform animation
+        setIsPlaying(true);
+        setTimeout(() => setIsPlaying(false), 500);
+      }
     } catch (error) {
       console.error('Failed to play note:', error);
     }
@@ -537,7 +600,7 @@ export default function WaveEditor() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Left Column - AI Command & Waveform */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-6 flex flex-col">
           <AICommandPanel
             currentPrompt={currentPrompt}
             setCurrentPrompt={setCurrentPrompt}
@@ -547,23 +610,38 @@ export default function WaveEditor() {
             onLoadPreset={loadDefaultPreset}
           />
 
-          <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg p-6">
-            <h3 className="text-lg font-semibold mb-4">Waveform Visualizer</h3>
-            <WaveformDisplay audioBuffer={currentBuffer} />
-          </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
+            <Card className="lg:col-span-2 bg-background/50 backdrop-blur border-border/50 shadow-lg p-6 flex flex-col">
+              <h3 className="text-lg font-semibold mb-4">Waveform Visualizer</h3>
+              <div className="flex-1">
+                <WaveformDisplay 
+                  audioBuffer={currentBuffer} 
+                  isPlaying={isPlaying}
+                />
+              </div>
+            </Card>
 
-          <PlaybackControls
-            isPlaying={isPlaying}
-            hasBuffer={!!currentBuffer}
-            isLoggedIn={!!identity}
-            onPlay={handlePlay}
-            onSave={savePreset}
-            onDownload={handleDownload}
+            <PlaybackControls
+              isPlaying={isPlaying}
+              hasBuffer={!!currentBuffer}
+              isLoggedIn={!!identity}
+              onPlay={handlePlay}
+              onSave={handleSave}
+              onDownload={handleDownload}
+              onAddToDrumMachine={onAddTrackToDrumMachine ? handleAddToDrumMachine : undefined}
+            />
+          </div>
+
+          <ADSREnvelope
+            envelope={envelope}
+            onEnvelopeChange={(key, value) => 
+              setEnvelope(prev => ({ ...prev, [key]: value[0] }))
+            }
           />
         </div>
 
         {/* Right Column - Controls */}
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
           <WaveformSelector
             waveform={waveform}
             onWaveformChange={setWaveform}
@@ -586,22 +664,6 @@ export default function WaveEditor() {
             onFadeOut={applyFadeOut}
           />
         </div>
-      </div>
-
-      {/* Bottom Section - ADSR, Presets, Keyboard */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ADSREnvelope
-          envelope={envelope}
-          onEnvelopeChange={(key, value) => 
-            setEnvelope(prev => ({ ...prev, [key]: value[0] }))
-          }
-        />
-
-        <PresetsManager
-          presets={savedPresets}
-          isLoggedIn={!!identity}
-          onLoadPreset={loadPreset}
-        />
       </div>
 
       {/* Virtual Keyboard */}
