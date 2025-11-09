@@ -14,6 +14,18 @@ Also serves the frontend static files from /static directory
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
+# --- ADDED IMPORTS / AI SETUP ---
+import re
+import json
+from typing import Any, Dict
+
+USE_AI = bool(os.getenv("OPENAI_API_KEY"))
+try:
+    if USE_AI:
+        from openai import OpenAI
+        oai_client = OpenAI()
+except Exception:
+    USE_AI = False
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)  # Enable CORS for Electron/browser access
@@ -27,6 +39,54 @@ def default_pattern():
     """Returns a 4x16 grid of False values"""
     return [[False for _ in range(16)] for _ in range(4)]
 
+
+# --- DUMB REGEX PARSER ---
+ADD_RE   = re.compile(r"^(add|put in)\s+(an?\s+)?(808|kick|snare|hi\s*hat|hihat|clap|bass|piano|pad)$", re.I)
+REMOVE_RE= re.compile(r"^(remove|delete)\s+(the\s+)?(808|kick|snare|hi\s*hat|hihat|clap|bass|piano|pad)$", re.I)
+MUTE_RE  = re.compile(r"^mute\s+(the\s+)?(808|kick|snare|hi\s*hat|hihat|clap|bass|piano|pad)$", re.I)
+UNMUTE_RE= re.compile(r"^unmute\s+(the\s+)?(808|kick|snare|hi\s*hat|hihat|clap|bass|piano|pad)$", re.I)
+TEMPO_ABS= re.compile(r"^set\s+tempo\s+to\s+(\d{2,3})$", re.I)
+TEMPO_DEL= re.compile(r"^(increase|decrease)\s+tempo\s+by\s+(\d{1,2})$", re.I)
+KEY_RE   = re.compile(r"^set\s+key\s+to\s+(C|G|A\s*minor|E\s*minor)$", re.I)
+SWING_RE = re.compile(r"^swing\s+(5[0-9]|6[0-5])%$", re.I)
+
+def parse_command(text: str) -> Dict[str, Any]:
+    t = text.strip()
+    if m := ADD_RE.match(t):     return {"type":"add","instrument":m.group(3).replace(" ","")}
+    if m := REMOVE_RE.match(t):  return {"type":"remove","instrument":m.group(3).replace(" ","")}
+    if m := MUTE_RE.match(t):    return {"type":"mute","instrument":m.group(2).replace(" ","")}
+    if m := UNMUTE_RE.match(t):  return {"type":"unmute","instrument":m.group(2).replace(" ","")}
+    if m := TEMPO_ABS.match(t):  return {"type":"tempo:set","bpm":int(m.group(1))}
+    if m := TEMPO_DEL.match(t):
+        sign = 1 if m.group(1).lower()=="increase" else -1
+        return {"type":"tempo:delta","delta":sign*int(m.group(2))}
+    if m := KEY_RE.match(t):     return {"type":"key:set","key":m.group(1).replace("  "," ").title()}
+    if m := SWING_RE.match(t):   return {"type":"swing:set","percent":int(m.group(1))}
+    return {"type":"unknown","raw":t}
+
+# --- OPTIONAL OPENAI-BASED PLANNER ---
+def ai_plan_from_text(text: str) -> Dict[str, Any]:
+    prompt = f"""
+Return ONLY a JSON object named plan with one of these shapes:
+{{"type":"add|remove|mute|unmute","instrument":"808|kick|snare|hihat|clap|bass|piano|pad","pattern":optional}}
+{{"type":"tempo:set","bpm":40..220}}
+{{"type":"tempo:delta","delta":-50..50}}
+{{"type":"key:set","key":"C|G|A minor|E minor"}}
+{{"type":"swing:set","percent":50..65}}
+User: {text}
+Only the JSON. No code fences.
+"""
+    try:
+        resp = oai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role":"user","content":prompt}],
+            temperature=0
+        )
+        raw = resp.choices[0].message.content.strip()
+        raw = raw.replace("```json","").replace("```","").strip()
+        return json.loads(raw)
+    except Exception as e:
+        raise RuntimeError(f"OpenAI error: {e}")
 
 # Serve frontend
 @app.route('/')
@@ -104,6 +164,26 @@ def set_tempo(user):
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+# --- NEW: AI / RULES COMMAND ROUTE ---
+@app.route('/api/command', methods=['POST'])
+def command_agent():
+    data = request.get_json(silent=True) or {}
+    text = data.get('text', '').strip()
+    if not text:
+        return jsonify({"error":"text required"}), 400
+    if USE_AI:
+        try:
+            plan = ai_plan_from_text(text)
+            return jsonify({"plan": plan, "source": "ai"})
+        except Exception as e:
+            # graceful fallback to rules
+            plan = parse_command(text)
+            return jsonify({"plan": plan, "source": "rules", "ai_error": str(e)}), 200
+    # no key: use rules
+    plan = parse_command(text)
+    return jsonify({"plan": plan, "source": "rules"})
 
 
 if __name__ == '__main__':
