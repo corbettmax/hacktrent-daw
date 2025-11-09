@@ -7,13 +7,15 @@ Implements the same endpoints as the original Motoko canister:
 - POST /pattern/<user>/<name>
 - GET /tempo/<user>
 - POST /tempo/<user>
+
+Also serves the frontend static files from /static directory
 """
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)  # Enable CORS for Electron/browser access
 
 # In-memory storage
@@ -24,6 +26,21 @@ user_tempos = {}    # user -> tempo
 def default_pattern():
     """Returns a 4x16 grid of False values"""
     return [[False for _ in range(16)] for _ in range(4)]
+
+
+# Serve frontend
+@app.route('/')
+def serve_frontend():
+    return send_from_directory(app.static_folder, 'index.html')
+
+
+@app.route('/<path:path>')
+def serve_static(path):
+    if os.path.exists(os.path.join(app.static_folder, path)):
+        return send_from_directory(app.static_folder, path)
+    else:
+        # For SPA routing, serve index.html for unknown routes
+        return send_from_directory(app.static_folder, 'index.html')
 
 
 @app.route('/defaultPattern', methods=['GET'])
@@ -90,6 +107,7 @@ def health():
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8000))
+    # Use PORT env var if provided by the host (Cloud Run sets PORT=8080)
+    port = int(os.environ.get('PORT', 8080))
     print(f'DrumMachine Python backend starting on port {port}')
     app.run(host='0.0.0.0', port=port, debug=False)
