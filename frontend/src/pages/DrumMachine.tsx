@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Upload } from 'lucide-react';
+import { Play, Square, Upload, Music, Activity, Music2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePatternQueries } from '../hooks/useQueries';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
@@ -10,6 +10,8 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import SequencerGrid from '../components/SequencerGrid';
 import TrackControls from '../components/TrackControls';
+import WaveEditor from './WaveEditor';
+import SynthesizerPage from './SynthesizerPage';
 import { AudioEngine } from '../lib/audioEngine';
 
 export interface DrumTrack {
@@ -20,9 +22,13 @@ export interface DrumTrack {
   volume: number;
 }
 
+type ViewMode = 'sequencer' | 'editor' | 'synthesizer';
+
 export default function DrumMachine() {
   const { identity } = useInternetIdentity();
   const { savePatternMutation, loadPatternQuery, saveTempoMutation, loadTempoQuery } = usePatternQueries();
+  
+  const [viewMode, setViewMode] = useState<ViewMode>('sequencer');
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -199,15 +205,48 @@ export default function DrumMachine() {
       
       <main className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto space-y-8">
-          {/* Title Section */}
-          <div className="text-center space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-              Drum Machine
-            </h1>
-            <p className="text-muted-foreground">
-              Create beats with the step sequencer
-            </p>
-          </div>
+          {/* Navigation Tabs */}
+          <Card className="p-2 bg-card/50 backdrop-blur border-primary/20">
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === 'sequencer' ? 'default' : 'outline'}
+                onClick={() => setViewMode('sequencer')}
+                className="flex-1"
+              >
+                <Music className="mr-2 h-4 w-4" />
+                Sequencer
+              </Button>
+              <Button
+                variant={viewMode === 'editor' ? 'default' : 'outline'}
+                onClick={() => setViewMode('editor')}
+                className="flex-1"
+              >
+                <Activity className="mr-2 h-4 w-4" />
+                Wave Editor
+              </Button>
+              <Button
+                variant={viewMode === 'synthesizer' ? 'default' : 'outline'}
+                onClick={() => setViewMode('synthesizer')}
+                className="flex-1"
+              >
+                <Music2 className="mr-2 h-4 w-4" />
+                Synthesizer
+              </Button>
+            </div>
+          </Card>
+
+          {/* Conditional View Rendering */}
+          {viewMode === 'sequencer' ? (
+            <>
+              {/* Title Section */}
+              <div className="text-center space-y-2">
+                <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
+                  Drum Machine
+                </h1>
+                <p className="text-muted-foreground">
+                  Create beats with the step sequencer
+                </p>
+              </div>
 
           {/* Main Controls */}
           <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
@@ -290,6 +329,12 @@ export default function DrumMachine() {
               ))}
             </div>
           </Card>
+            </>
+          ) : viewMode === 'editor' ? (
+            <WaveEditor />
+          ) : (
+            <SynthesizerPage />
+          )}
         </div>
       </main>
 
