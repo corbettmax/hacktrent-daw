@@ -4,6 +4,7 @@ interface SequencerGridProps {
   pattern: boolean[];
   currentStep: number;
   isPlaying: boolean;
+  trackColor?: string;
   onStepToggle: (stepIndex: number) => void;
 }
 
@@ -11,6 +12,7 @@ export default function SequencerGrid({
   pattern,
   currentStep,
   isPlaying,
+  trackColor = '#8b5cf6',
   onStepToggle,
 }: SequencerGridProps) {
   return (
@@ -27,12 +29,17 @@ export default function SequencerGrid({
               'aspect-square rounded-md transition-all duration-150 border-2',
               'hover:scale-105 active:scale-95',
               isActive
-                ? 'bg-primary border-primary shadow-lg shadow-primary/50'
+                ? 'border-opacity-80 shadow-lg'
                 : isBeat
                 ? 'bg-muted/50 border-muted hover:bg-muted'
                 : 'bg-background border-border hover:bg-muted/30',
               isCurrentStep && 'ring-2 ring-accent ring-offset-2 ring-offset-background scale-110'
             )}
+            style={isActive ? {
+              backgroundColor: trackColor,
+              borderColor: trackColor,
+              boxShadow: `0 0 10px ${trackColor}40`
+            } : undefined}
             aria-label={`Step ${stepIndex + 1}`}
           />
         );

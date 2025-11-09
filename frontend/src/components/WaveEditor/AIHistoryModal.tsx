@@ -38,7 +38,7 @@ export default function AIHistoryModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+      <DialogContent className="max-w-3xl h-[80vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -49,7 +49,7 @@ export default function AIHistoryModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4 pr-4 min-h-[300px]">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-4 min-h-0">
           {messages.length === 0 ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center space-y-2">
@@ -103,7 +103,7 @@ export default function AIHistoryModal({
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="border-t pt-4 mt-4">
+        <div className="border-t pt-4 mt-4 flex-shrink-0">
           <div className="flex gap-2">
             <input
               type="text"

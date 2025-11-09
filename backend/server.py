@@ -19,6 +19,54 @@ import re
 import json
 from typing import Any, Dict
 
+# --- Google Cloud Secret Manager Setup ---
+def get_secret_value(project_id, secret_id, version_id="latest"):
+    """Access the payload for the given secret version if one exists.
+    
+    Args:
+        project_id (str): The Google Cloud project ID.
+        secret_id (str): The ID of the secret to access.
+        version_id (str): The version of the secret to access (e.g., "latest").
+    
+    Returns:
+        str: The secret payload as a string, or None if error.
+    """
+    try:
+        import google.cloud.secretmanager as secretmanager
+        client = secretmanager.SecretManagerServiceClient()
+        name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+        response = client.access_secret_version(request={"name": name})
+        payload = response.payload.data.decode("UTF-8")
+        print(f"[SECRET] Successfully retrieved secret '{secret_id}'")
+        return payload
+    except Exception as e:
+        print(f"[SECRET] Error accessing secret '{secret_id}': {e}")
+        return None
+
+# Get the GCP Project ID from the environment (Cloud Run automatically sets this)
+PROJECT_ID = os.environ.get("GCP_PROJECT")
+API_KEY_SECRET_ID = "hacktrent-daw-api-key-secret"
+
+# Try to get API key from Secret Manager first, fallback to env var for local dev
+GOOGLE_API_KEY = None
+if PROJECT_ID:
+    print(f"[STARTUP] GCP_PROJECT detected: {PROJECT_ID}")
+    print(f"[STARTUP] Attempting to retrieve API key from Secret Manager...")
+    GOOGLE_API_KEY = get_secret_value(PROJECT_ID, API_KEY_SECRET_ID)
+    if GOOGLE_API_KEY:
+        print("[STARTUP] ✓ API key retrieved from Secret Manager")
+    else:
+        print("[STARTUP] ✗ Failed to retrieve API key from Secret Manager")
+
+# Fallback to environment variable for local development
+if not GOOGLE_API_KEY:
+    print("[STARTUP] Falling back to GOOGLE_API_KEY environment variable")
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    if GOOGLE_API_KEY:
+        print("[STARTUP] ✓ API key found in environment variable")
+    else:
+        print("[STARTUP] ✗ No API key found in environment variable")
+
 USE_AI = bool(os.getenv("OPENAI_API_KEY"))
 try:
     if USE_AI:
@@ -28,7 +76,6 @@ except Exception:
     USE_AI = False
 
 # Google Gemini setup
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 USE_GEMINI = bool(GOOGLE_API_KEY)
 gemini_model = None
 

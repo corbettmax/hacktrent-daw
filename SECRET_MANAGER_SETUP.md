@@ -4,7 +4,7 @@ This guide shows how to securely store the Google Gemini API key using Google Se
 
 ## Prerequisites
 
-- Google Cloud Project with billing enabled
+- Google Cloud Project with billing enabled (Project ID: `beaming-force-477622-f4`)
 - `gcloud` CLI installed and configured
 - Appropriate IAM permissions (Secret Manager Admin, Cloud Run Admin)
 
@@ -23,9 +23,11 @@ gcloud services enable cloudbuild.googleapis.com
 
 ## Step 2: Create the Secret
 
+**IMPORTANT:** The secret name must be `hacktrent-daw-api-key-secret` to match the code.
+
 ```bash
-# Create a new secret named 'gemeni_key'
-echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create gemeni_key \
+# Create a new secret named 'hacktrent-daw-api-key-secret'
+echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create hacktrent-daw-api-key-secret \
   --data-file=- \
   --replication-policy="automatic"
 ```
@@ -36,7 +38,7 @@ echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create gemeni_key \
 echo "YOUR_ACTUAL_GEMINI_API_KEY" > api_key.txt
 
 # Create secret from file
-gcloud secrets create gemeni_key \
+gcloud secrets create hacktrent-daw-api-key-secret \
   --data-file=api_key.txt \
   --replication-policy="automatic"
 
@@ -51,32 +53,70 @@ rm api_key.txt
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
 
 # Grant the Cloud Run service account access to the secret
-gcloud secrets add-iam-policy-binding gemeni_key \
+gcloud secrets add-iam-policy-binding hacktrent-daw-api-key-secret \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
 # Also grant Cloud Build service account access (for deployment)
-gcloud secrets add-iam-policy-binding gemeni_key \
+gcloud secrets add-iam-policy-binding hacktrent-daw-api-key-secret \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
 
-## Step 4: Verify Secret Creation
+## Step 4: Set the GCP_PROJECT Environment Variable
+
+The application needs to know which GCP project to use. Update your Cloud Run service:
+
+```bash
+# Deploy or update Cloud Run with the GCP_PROJECT environment variable
+gcloud run services update hacktrent-daw \
+  --region=us-central1 \
+  --set-env-vars="GCP_PROJECT=beaming-force-477622-f4"
+```
+
+**Or include it in your initial deployment:**
+```bash
+gcloud run deploy hacktrent-daw \
+  --region=us-central1 \
+  --set-env-vars="GCP_PROJECT=beaming-force-477622-f4" \
+  --allow-unauthenticated
+```
+
+## Step 4: Set the GCP_PROJECT Environment Variable
+
+The application needs to know which GCP project to use. Update your Cloud Run service:
+
+```bash
+# Deploy or update Cloud Run with the GCP_PROJECT environment variable
+gcloud run services update hacktrent-daw \
+  --region=us-central1 \
+  --set-env-vars="GCP_PROJECT=beaming-force-477622-f4"
+```
+
+**Or include it in your initial deployment:**
+```bash
+gcloud run deploy hacktrent-daw \
+  --region=us-central1 \
+  --set-env-vars="GCP_PROJECT=beaming-force-477622-f4" \
+  --allow-unauthenticated
+```
+
+## Step 5: Verify Secret Creation
 
 ```bash
 # List all secrets
 gcloud secrets list
 
 # View secret metadata (not the actual value)
-gcloud secrets describe gemeni_key
+gcloud secrets describe hacktrent-daw-api-key-secret
 
 # Access the secret value (to verify it's correct)
-gcloud secrets versions access latest --secret="gemeni_key"
+gcloud secrets versions access latest --secret="hacktrent-daw-api-key-secret"
 ```
 
-## Step 5: Deploy with Cloud Build
+## Step 6: Deploy or Redeploy Your Service
 
-The `cloudbuild.yaml` is already configured to use the secret. Just push your code:
+After setting up the secret and environment variables, redeploy your service:
 
 ```bash
 git add .
@@ -86,16 +126,27 @@ git push origin main
 
 Cloud Build will automatically:
 1. Build the Docker image
-2. Access the secret from Secret Manager
-3. Deploy to Cloud Run with the secret mounted as an environment variable
+2. Deploy to Cloud Run
 
-## Step 6: Verify Deployment
+The application will automatically:
+1. Detect the GCP_PROJECT environment variable
+2. Retrieve the API key from Secret Manager
+3. Initialize Gemini with the retrieved key
+
+## Step 7: Verify Deployment
 
 ```bash
-# Check if the secret is properly configured
-gcloud run services describe hacktrent-daw \
-  --region=us-central1 \
-  --format='value(spec.template.spec.containers[0].env)'
+# Check deployment logs
+gcloud run services logs read hacktrent-daw --region=us-central1 --limit=50
+
+# You should see log messages like:
+# [STARTUP] GCP_PROJECT detected: beaming-force-477622-f4
+# [STARTUP] Attempting to retrieve API key from Secret Manager...
+# [SECRET] Successfully retrieved secret 'hacktrent-daw-api-key-secret'
+# [STARTUP] ✓ API key retrieved from Secret Manager
+# [STARTUP] GOOGLE_API_KEY present: True
+# [STARTUP] USE_GEMINI: True
+# [STARTUP] Gemini model initialized successfully
 
 # Test the API endpoint
 curl -X POST https://YOUR-SERVICE-URL/api/generate-synth-params \
@@ -109,10 +160,10 @@ If you need to update the API key:
 
 ```bash
 # Add a new version
-echo -n "NEW_API_KEY" | gcloud secrets versions add gemeni_key --data-file=-
+echo -n "NEW_API_KEY" | gcloud secrets versions add hacktrent-daw-api-key-secret --data-file=-
 
-# Cloud Run will automatically use the latest version
-# You may need to redeploy for the change to take effect:
+# The application will automatically use the latest version on next restart
+# Force a restart by redeploying:
 gcloud run services update hacktrent-daw --region=us-central1
 ```
 
@@ -136,7 +187,7 @@ gcloud run services update hacktrent-daw --region=us-central1
 ### Permission Denied Error
 ```bash
 # Ensure the service account has the correct role
-gcloud projects add-iam-policy-binding PROJECT_ID \
+gcloud secrets add-iam-policy-binding hacktrent-daw-api-key-secret \
   --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
   --role="roles/secretmanager.secretAccessor"
 ```
@@ -146,17 +197,27 @@ gcloud projects add-iam-policy-binding PROJECT_ID \
 # Verify the secret exists
 gcloud secrets list
 
-# Check the secret name matches in cloudbuild.yaml
-# It should be: gemeni_key
+# Check the secret name in the application logs
+# It should be: hacktrent-daw-api-key-secret
 ```
 
 ### Cloud Build Can't Access Secret
 ```bash
 # Grant Cloud Build service account access
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding gemeni_key \
+gcloud secrets add-iam-policy-binding hacktrent-daw-api-key-secret \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
+```
+
+### GCP_PROJECT Not Set
+If you see `[STARTUP] Falling back to GOOGLE_API_KEY environment variable`, the GCP_PROJECT env var is missing:
+
+```bash
+# Set it on your Cloud Run service
+gcloud run services update hacktrent-daw \
+  --region=us-central1 \
+  --set-env-vars="GCP_PROJECT=beaming-force-477622-f4"
 ```
 
 ## Cost Considerations

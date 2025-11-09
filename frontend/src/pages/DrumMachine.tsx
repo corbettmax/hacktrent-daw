@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Upload, Music, Activity, Radio, Layers } from 'lucide-react';
+import { Play, Square, Upload, Music, Activity, Radio, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePatternQueries } from '../hooks/useQueries';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
@@ -12,7 +12,6 @@ import SequencerGrid from '../components/SequencerGrid';
 import TrackControls from '../components/TrackControls';
 import WaveEditor from './WaveEditor';
 import Synthesizer from '../components/Synthesizer';
-import MultitrackEditor from '../components/MultitrackEditor';
 import { AudioEngine } from '../lib/audioEngine';
 
 export interface DrumTrack {
@@ -21,15 +20,17 @@ export interface DrumTrack {
   icon: string;
   buffer: AudioBuffer | null;
   volume: number;
+  color: string;
 }
 
-type ViewMode = 'sequencer' | 'editor' | 'synthesizer' | 'multitrack';
+type ViewMode = 'sequencer' | 'editor' | 'synthesizer';
 
 export default function DrumMachine() {
   const { identity } = useInternetIdentity();
   const { savePatternMutation, loadPatternQuery, saveTempoMutation, loadTempoQuery } = usePatternQueries();
   
   const [viewMode, setViewMode] = useState<ViewMode>('sequencer');
+  const [editingTrackIndex, setEditingTrackIndex] = useState<number | undefined>(undefined);
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -49,10 +50,10 @@ export default function DrumMachine() {
 
       // Load built-in samples
       const defaultTracks: DrumTrack[] = [
-        { id: 'kick', name: 'Kick', icon: '/assets/generated/kick-icon-transparent.dim_64x64.png', buffer: null, volume: 1 },
-        { id: 'snare', name: 'Snare', icon: '/assets/generated/snare-icon-transparent.dim_64x64.png', buffer: null, volume: 1 },
-        { id: 'hihat', name: 'Hi-Hat', icon: '/assets/generated/hihat-icon-transparent.dim_64x64.png', buffer: null, volume: 1 },
-        { id: 'clap', name: 'Clap', icon: '/assets/generated/clap-icon-transparent.dim_64x64.png', buffer: null, volume: 1 },
+        { id: 'kick', name: 'Kick', icon: '/assets/generated/kick-icon-transparent.dim_64x64.png', buffer: null, volume: 1, color: '#c74440' },
+        { id: 'snare', name: 'Snare', icon: '/assets/generated/snare-icon-transparent.dim_64x64.png', buffer: null, volume: 1, color: '#2d70b3' },
+        { id: 'hihat', name: 'Hi-Hat', icon: '/assets/generated/hihat-icon-transparent.dim_64x64.png', buffer: null, volume: 1, color: '#388c46' },
+        { id: 'clap', name: 'Clap', icon: '/assets/generated/clap-icon-transparent.dim_64x64.png', buffer: null, volume: 1, color: '#6042a6' },
       ];
 
       // Generate simple drum sounds
@@ -200,6 +201,121 @@ export default function DrumMachine() {
     setTracks(newTracks);
   };
 
+  const handleTrackNameChange = (trackIndex: number, name: string) => {
+    const newTracks = [...tracks];
+    newTracks[trackIndex] = { ...newTracks[trackIndex], name };
+    setTracks(newTracks);
+  };
+
+  const handleTrackColorChange = (trackIndex: number, color: string) => {
+    const newTracks = [...tracks];
+    newTracks[trackIndex] = { ...newTracks[trackIndex], color };
+    setTracks(newTracks);
+  };
+
+  const handleAddTrack = () => {
+    // Desmos-style color palette
+    const desmosColors = [
+      '#c74440', // red
+      '#2d70b3', // blue
+      '#388c46', // green
+      '#6042a6', // purple
+      '#fa7e19', // orange
+      '#000000', // black
+      '#6ca0dc', // light blue
+      '#2f8e3f', // dark green
+      '#a8297b', // magenta
+      '#5f4c2d', // brown
+      '#fdb632', // yellow
+      '#c2185b', // pink
+    ];
+    
+    const newTrack: DrumTrack = {
+      id: `track-${Date.now()}`,
+      name: `Track ${tracks.length + 1}`,
+      icon: '/assets/generated/kick-icon-transparent.dim_64x64.png',
+      buffer: null,
+      volume: 1,
+      color: desmosColors[tracks.length % desmosColors.length],
+    };
+    
+    setTracks([...tracks, newTrack]);
+    
+    // Add empty row to pattern
+    setPattern([...pattern, Array(16).fill(false)]);
+    
+    toast.success('Track added');
+  };
+
+  const handleAddTrackFromWaveEditor = (name: string, buffer: AudioBuffer) => {
+    // Desmos-style color palette
+    const desmosColors = [
+      '#c74440', // red
+      '#2d70b3', // blue
+      '#388c46', // green
+      '#6042a6', // purple
+      '#fa7e19', // orange
+      '#000000', // black
+      '#6ca0dc', // light blue
+      '#2f8e3f', // dark green
+      '#a8297b', // magenta
+      '#5f4c2d', // brown
+      '#fdb632', // yellow
+      '#c2185b', // pink
+    ];
+    
+    const newTrack: DrumTrack = {
+      id: `track-${Date.now()}`,
+      name,
+      icon: '/assets/generated/kick-icon-transparent.dim_64x64.png',
+      buffer,
+      volume: 1,
+      color: desmosColors[tracks.length % desmosColors.length],
+    };
+    
+    setTracks([...tracks, newTrack]);
+    
+    // Add empty row to pattern
+    setPattern([...pattern, Array(16).fill(false)]);
+  };
+
+  const handleSwitchToSequencer = () => {
+    setViewMode('sequencer');
+    setEditingTrackIndex(undefined);
+  };
+
+  const handleEditWaveform = (trackIndex: number) => {
+    setEditingTrackIndex(trackIndex);
+    setViewMode('editor');
+    toast.info(`Editing waveform for ${tracks[trackIndex].name}`);
+  };
+
+  const handleUpdateTrack = (trackIndex: number, buffer: AudioBuffer) => {
+    const newTracks = [...tracks];
+    newTracks[trackIndex] = {
+      ...newTracks[trackIndex],
+      buffer: buffer,
+    };
+    setTracks(newTracks);
+    setEditingTrackIndex(undefined);
+  };
+
+  const handleRemoveTrack = (trackIndex: number) => {
+    if (tracks.length <= 1) {
+      toast.error('Cannot remove the last track');
+      return;
+    }
+    
+    const newTracks = tracks.filter((_, i) => i !== trackIndex);
+    setTracks(newTracks);
+    
+    // Remove row from pattern
+    const newPattern = pattern.filter((_, i) => i !== trackIndex);
+    setPattern(newPattern);
+    
+    toast.success('Track removed');
+  };
+
   return (
     <div className="flex min-h-screen flex-col">
       <Header />
@@ -208,7 +324,7 @@ export default function DrumMachine() {
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Navigation Tabs */}
           <Card className="p-2 bg-card/50 backdrop-blur border-primary/20">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button
                 variant={viewMode === 'sequencer' ? 'default' : 'outline'}
                 onClick={() => setViewMode('sequencer')}
@@ -229,13 +345,6 @@ export default function DrumMachine() {
               >
                 <Radio className="mr-2 h-4 w-4" />
                 Synthesizer
-              </Button>
-              <Button
-                variant={viewMode === 'multitrack' ? 'default' : 'outline'}
-                onClick={() => setViewMode('multitrack')}
-              >
-                <Layers className="mr-2 h-4 w-4" />
-                Multitrack
               </Button>
             </div>
           </Card>
@@ -303,13 +412,23 @@ export default function DrumMachine() {
               </div>
 
               {/* Clear Button */}
-              <Button
-                variant="outline"
-                onClick={handleClearPattern}
-                className="border-destructive/50 hover:bg-destructive/10"
-              >
-                Clear
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleAddTrack}
+                  className="border-primary/50 hover:bg-primary/10"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Track
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleClearPattern}
+                  className="border-destructive/50 hover:bg-destructive/10"
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
           </Card>
 
@@ -318,16 +437,33 @@ export default function DrumMachine() {
             <div className="space-y-4">
               {tracks.map((track, trackIndex) => (
                 <div key={track.id} className="space-y-2">
-                  <TrackControls
-                    track={track}
-                    trackIndex={trackIndex}
-                    onSampleUpload={handleSampleUpload}
-                    onVolumeChange={handleVolumeChange}
-                  />
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1">
+                      <TrackControls
+                        track={track}
+                        trackIndex={trackIndex}
+                        onSampleUpload={handleSampleUpload}
+                        onVolumeChange={handleVolumeChange}
+                        onNameChange={handleTrackNameChange}
+                        onColorChange={handleTrackColorChange}
+                        onEditWaveform={handleEditWaveform}
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRemoveTrack(trackIndex)}
+                      className="border-destructive/50 hover:bg-destructive/10 mt-1"
+                      title="Remove track"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                   <SequencerGrid
                     pattern={pattern[trackIndex] || Array(16).fill(false)}
                     currentStep={currentStep}
                     isPlaying={isPlaying}
+                    trackColor={track.color}
                     onStepToggle={(stepIndex) => handleStepToggle(trackIndex, stepIndex)}
                   />
                 </div>
@@ -336,11 +472,15 @@ export default function DrumMachine() {
           </Card>
             </>
           ) : viewMode === 'editor' ? (
-            <WaveEditor />
-          ) : viewMode === 'synthesizer' ? (
-            <Synthesizer />
+            <WaveEditor 
+              onAddTrackToDrumMachine={handleAddTrackFromWaveEditor}
+              onSwitchToSequencer={handleSwitchToSequencer}
+              editingTrackIndex={editingTrackIndex}
+              editingTrackBuffer={editingTrackIndex !== undefined ? tracks[editingTrackIndex]?.buffer : undefined}
+              onUpdateTrack={handleUpdateTrack}
+            />
           ) : (
-            <MultitrackEditor />
+            <Synthesizer />
           )}
         </div>
       </main>
