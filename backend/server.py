@@ -28,15 +28,21 @@ except Exception:
     USE_AI = False
 
 # Google Gemini setup
-USE_GEMINI = bool(os.getenv("GOOGLE_API_KEY"))
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+USE_GEMINI = bool(GOOGLE_API_KEY)
 gemini_model = None
+
+print(f"[STARTUP] GOOGLE_API_KEY present: {bool(GOOGLE_API_KEY)}")
+print(f"[STARTUP] USE_GEMINI: {USE_GEMINI}")
+
 try:
     if USE_GEMINI:
         import google.generativeai as genai
-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-        gemini_model = genai.GenerativeModel('gemini-pro')
+        genai.configure(api_key=GOOGLE_API_KEY)
+        gemini_model = genai.GenerativeModel('gemini-2.5-flash')
+        print("[STARTUP] Gemini model initialized successfully")
 except Exception as e:
-    print(f"Warning: Failed to initialize Gemini: {e}")
+    print(f"[ERROR] Failed to initialize Gemini: {e}")
     USE_GEMINI = False
 
 app = Flask(__name__, static_folder='static', static_url_path='')
@@ -208,43 +214,92 @@ def generate_synth_params():
     data = request.get_json(silent=True) or {}
     prompt = data.get('prompt', '').strip()
     
+    print(f"[API] generate-synth-params called with prompt: '{prompt}'")
+    print(f"[API] USE_GEMINI: {USE_GEMINI}")
+    print(f"[API] gemini_model: {gemini_model}")
+    
     if not prompt:
         return jsonify({"error": "prompt required"}), 400
     
     if not USE_GEMINI:
+        print("[API] Using fallback - Gemini not available")
         # Fallback to sensible defaults based on simple keyword matching
         return fallback_synth_params(prompt)
     
     try:
         # Construct the AI prompt for Gemini
-        ai_prompt = f"""You are a synthesizer parameter expert. Generate synth parameters for the following sound description: "{prompt}"
+        ai_prompt = f"""You are an expert sound designer with deep knowledge of synthesis parameters. Create unique and musically interesting synth parameters for: "{prompt}"
 
-Return ONLY a valid JSON object with these exact fields (no markdown, no code blocks):
+IMPORTANT: Be creative and vary the parameters significantly based on the description. Don't default to similar values.
+
+Return ONLY a valid JSON object (no markdown, no code blocks, no explanations):
 {{
   "waveform": "sine|square|sawtooth|triangle|noise",
   "frequency": 20-2000 (number in Hz),
   "duration": 0.1-2.0 (number in seconds),
-  "amplitude": 0.0-1.0 (number),
+  "amplitude": 0.3-0.9 (number),
   "envelope": {{
-    "attack": 0.001-1.0 (number in seconds),
-    "decay": 0.001-1.0 (number in seconds),
-    "sustain": 0.0-1.0 (number, percentage),
-    "release": 0.001-2.0 (number in seconds)
+    "attack": 0.001-1.5 (number in seconds),
+    "decay": 0.001-1.2 (number in seconds),
+    "sustain": 0.1-0.95 (number, 0-1 range),
+    "release": 0.01-2.5 (number in seconds)
   }}
 }}
 
-Guidelines:
-- Bass sounds: use sine or triangle, low frequency (40-150 Hz), long release
-- Lead sounds: use sawtooth or square, mid frequency (200-800 Hz), short attack
-- Pad sounds: use multiple waveforms, long attack/release
-- Percussion: use noise or square, short duration, fast attack/release
-- Bright sounds: higher frequency, faster attack
-- Soft sounds: sine wave, slower attack, longer release
+Sound Design Guidelines (vary these based on context):
 
-Return ONLY the JSON object, nothing else."""
+BASS SOUNDS:
+- Deep bass: sine, 30-60 Hz, attack 0.001-0.01s, long release 0.8-1.5s
+- Sub bass: sine, 40-80 Hz, very short attack, sustain 0.9
+- Fat bass: triangle, 50-100 Hz, medium attack 0.05s, decay 0.3s
+- Growl bass: sawtooth, 60-120 Hz, short attack, low sustain 0.2-0.4
+
+LEAD SOUNDS:
+- Bright lead: sawtooth, 300-800 Hz, attack 0.01-0.03s, sustain 0.7-0.85
+- Sharp lead: square, 400-1000 Hz, very short attack 0.001s, medium release
+- Smooth lead: triangle, 250-600 Hz, attack 0.05-0.1s, long release
+- Aggressive lead: square, 500-1200 Hz, attack 0.001s, low sustain 0.3
+
+PAD SOUNDS:
+- Warm pad: sine/triangle, 150-400 Hz, long attack 0.5-1.2s, long release 1.5-2.5s
+- Bright pad: sawtooth, 300-700 Hz, attack 0.3-0.8s, sustain 0.85-0.95
+- Dark pad: sine, 100-250 Hz, slow attack 0.8-1.5s, very long release 2.0s+
+- Ethereal pad: triangle, 200-500 Hz, very slow attack 1.0-1.5s
+
+PLUCK SOUNDS:
+- Bright pluck: sawtooth, 300-800 Hz, attack 0.001s, decay 0.15-0.3s, sustain 0.1-0.3
+- Soft pluck: triangle, 250-600 Hz, attack 0.01s, decay 0.2-0.4s, sustain 0.4
+- Bell-like: sine, 400-1000 Hz, attack 0.001s, long decay 0.5s, low sustain 0.1
+
+PERCUSSION:
+- Snappy: noise, 200-800 Hz, attack 0.001s, decay 0.02-0.08s, release 0.05-0.15s
+- Soft hit: filtered noise, 150-400 Hz, attack 0.005s, decay 0.1s
+- Click: noise, 800-1500 Hz, very short duration 0.05s, attack 0.001s
+
+FX SOUNDS:
+- Sweep: sawtooth, vary frequency 100-2000, long duration 1.5-2s, long attack
+- Rise: triangle, 50-500 Hz, duration 1-2s, slow attack 0.5-1s
+- Zap: square, 300-1500 Hz, short duration 0.15s, fast attack/release
+
+ANALYZE the user's prompt for:
+- Mood descriptors (warm, cold, bright, dark, aggressive, soft, smooth, harsh)
+- Sonic qualities (punchy, fat, thin, wide, narrow, rich, hollow)
+- Musical context (techno, ambient, jazz, rock, cinematic)
+- Energy level (energetic, laid-back, intense, gentle)
+
+Then creatively combine and adjust parameters to match. BE CREATIVE and VARY the values significantly!
+
+Return ONLY the JSON object:"""
 
         # Call Gemini
-        response = gemini_model.generate_content(ai_prompt)
+        response = gemini_model.generate_content(
+            ai_prompt,
+            generation_config={
+                'temperature': 0.9,  # Higher temperature for more variety
+                'top_p': 0.95,
+                'top_k': 40,
+            }
+        )
         response_text = response.text.strip()
         
         # Clean up response (remove markdown code blocks if present)

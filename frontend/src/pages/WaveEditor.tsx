@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Download, Wand2, Save, Upload, Music2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Play, Square, Download, Wand2, Save, Upload, Music2, Send, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { AudioEngine } from '../lib/audioEngine';
 import VirtualKeyboard from '../components/VirtualKeyboard';
@@ -24,6 +25,20 @@ interface WavePreset {
   createdAt: Date;
 }
 
+interface AiMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  parameters?: {
+    waveform: string;
+    frequency: number;
+    duration: number;
+    amplitude: number;
+    envelope: any;
+  };
+}
+
 export default function WaveEditor() {
   const { identity } = useInternetIdentity();
   const [isPlaying, setIsPlaying] = useState(false);
@@ -40,9 +55,16 @@ export default function WaveEditor() {
   const [currentBuffer, setCurrentBuffer] = useState<AudioBuffer | null>(null);
   const [savedPresets, setSavedPresets] = useState<WavePreset[]>([]);
   const [presetName, setPresetName] = useState('');
+  const [aiPrompt, setAiPrompt] = useState<string>('');
+  const [isAiGenerated, setIsAiGenerated] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [currentPrompt, setCurrentPrompt] = useState('');
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
   
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initialize audio engine
   useEffect(() => {
@@ -54,6 +76,20 @@ export default function WaveEditor() {
     };
 
     initAudio();
+
+    // Load AI conversation history from localStorage
+    const savedHistory = localStorage.getItem('aiConversationHistory');
+    if (savedHistory) {
+      try {
+        const parsed = JSON.parse(savedHistory);
+        setAiMessages(parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        })));
+      } catch (error) {
+        console.error('Failed to load conversation history:', error);
+      }
+    }
   }, []);
 
   // Load saved presets
@@ -67,6 +103,11 @@ export default function WaveEditor() {
   useEffect(() => {
     generateSample();
   }, [waveform, frequency, duration, amplitude, envelope]);
+
+  // Auto-scroll to bottom of messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [aiMessages]);
 
   const generateSample = async () => {
     if (!audioEngineRef.current) return;
@@ -147,20 +188,24 @@ export default function WaveEditor() {
   };
 
   const handleGenerateAI = async () => {
-    const loadingToast = toast.loading('Generating AI-powered synth parameters...', {
-      description: 'Asking Gemini to create unique sound settings',
-    });
+    if (!currentPrompt.trim()) {
+      toast.error('Please enter a prompt');
+      return;
+    }
+
+    setIsGenerating(true);
+
+    // Add user message to conversation
+    const userMessage: AiMessage = {
+      id: `msg-${Date.now()}-user`,
+      role: 'user',
+      content: currentPrompt.trim(),
+      timestamp: new Date(),
+    };
+
+    setAiMessages((prev) => [...prev, userMessage]);
 
     try {
-      // Prompt for user to describe the sound they want
-      const userPrompt = prompt('Describe the sound you want to generate (e.g., "deep bass kick", "bright synth lead", "ambient pad"):');
-      
-      if (!userPrompt || !userPrompt.trim()) {
-        toast.dismiss(loadingToast);
-        toast.info('Generation cancelled');
-        return;
-      }
-
       // Call Python API endpoint
       const response = await fetch('/api/generate-synth-params', {
         method: 'POST',
@@ -168,7 +213,7 @@ export default function WaveEditor() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          prompt: userPrompt.trim(),
+          prompt: currentPrompt.trim(),
         }),
       });
 
@@ -192,17 +237,59 @@ export default function WaveEditor() {
         });
       }
 
-      toast.dismiss(loadingToast);
-      toast.success('AI parameters generated!', {
-        description: `Created settings for: "${userPrompt}"`,
+      // Mark as AI-generated and store the prompt
+      setIsAiGenerated(true);
+      setAiPrompt(currentPrompt.trim());
+
+      // Add assistant response to conversation
+      const assistantMessage: AiMessage = {
+        id: `msg-${Date.now()}-assistant`,
+        role: 'assistant',
+        content: `Generated synth parameters for "${currentPrompt.trim()}"`,
+        timestamp: new Date(),
+        parameters: data,
+      };
+
+      const updatedMessages = [...aiMessages, userMessage, assistantMessage];
+      setAiMessages(updatedMessages);
+
+      // Save conversation history to localStorage
+      localStorage.setItem('aiConversationHistory', JSON.stringify(updatedMessages));
+
+      // Clear input
+      setCurrentPrompt('');
+
+      toast.success('AI parameters applied!', {
+        description: 'Parameters are now active and will regenerate the sound',
+        duration: 5000,
       });
     } catch (error) {
       console.error('Failed to generate AI parameters:', error);
-      toast.dismiss(loadingToast);
+      
+      // Add error message to conversation
+      const errorMessage: AiMessage = {
+        id: `msg-${Date.now()}-error`,
+        role: 'assistant',
+        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      };
+
+      const updatedMessages = [...aiMessages, userMessage, errorMessage];
+      setAiMessages(updatedMessages);
+      localStorage.setItem('aiConversationHistory', JSON.stringify(updatedMessages));
+
       toast.error('Failed to generate AI parameters', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
+    } finally {
+      setIsGenerating(false);
     }
+  };
+
+  const clearAiHistory = () => {
+    setAiMessages([]);
+    localStorage.removeItem('aiConversationHistory');
+    toast.success('Conversation history cleared');
   };
 
   const handleDownload = () => {
@@ -285,6 +372,8 @@ export default function WaveEditor() {
     setDuration(preset.duration);
     setAmplitude(preset.amplitude);
     setEnvelope(preset.envelope);
+    setIsAiGenerated(false);
+    setAiPrompt('');
     toast.success(`Loaded preset: ${preset.name}`);
   };
 
@@ -322,6 +411,23 @@ export default function WaveEditor() {
         <p className="text-muted-foreground">
           Create and customize audio samples
         </p>
+        {isAiGenerated && aiPrompt && (
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-sm">
+            <Wand2 className="h-4 w-4 text-primary" />
+            <span className="text-primary font-medium">AI Generated:</span>
+            <span className="text-muted-foreground">"{aiPrompt}"</span>
+            <button
+              onClick={() => {
+                setIsAiGenerated(false);
+                setAiPrompt('');
+              }}
+              className="ml-2 text-muted-foreground hover:text-foreground"
+              title="Clear AI indicator"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Preset Manager */}
@@ -397,7 +503,7 @@ export default function WaveEditor() {
           <Button
             size="lg"
             variant="outline"
-            onClick={handleGenerateAI}
+            onClick={() => setIsAiModalOpen(true)}
             className="w-48"
           >
             <Wand2 className="mr-2 h-5 w-5" />
@@ -414,6 +520,133 @@ export default function WaveEditor() {
           </Button>
         </div>
       </Card>
+
+      {/* AI Generation Modal */}
+      <Dialog open={isAiModalOpen} onOpenChange={setIsAiModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b">
+            <DialogTitle className="flex items-center gap-2 text-2xl">
+              <Sparkles className="h-6 w-6 text-primary" />
+              AI Sound Generator
+            </DialogTitle>
+            <DialogDescription>
+              Describe the sound you want and AI will generate synth parameters
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Messages Container */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-[300px] max-h-[50vh]">
+            {aiMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center space-y-4 text-muted-foreground">
+                <Sparkles className="h-12 w-12 opacity-50" />
+                <div>
+                  <p className="text-lg font-medium">Start a conversation</p>
+                  <p className="text-sm">Describe the sound you want to create</p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 text-xs max-w-md">
+                  <div className="p-3 bg-muted rounded-lg text-left">
+                    <span className="font-medium">Try:</span> "deep bass kick for techno"
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg text-left">
+                    <span className="font-medium">Try:</span> "bright aggressive lead for EDM"
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg text-left">
+                    <span className="font-medium">Try:</span> "soft ethereal pad for ambient"
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                {aiMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg px-4 py-3 ${
+                        message.role === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2">
+                        {message.role === 'assistant' && (
+                          <Sparkles className="h-4 w-4 mt-1 flex-shrink-0" />
+                        )}
+                        <div className="flex-1">
+                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                          {message.parameters && (
+                            <div className="mt-2 pt-2 border-t border-border/50 text-xs space-y-1 opacity-80">
+                              <div>Waveform: {message.parameters.waveform}</div>
+                              <div>Frequency: {message.parameters.frequency} Hz</div>
+                              <div>Duration: {message.parameters.duration}s</div>
+                              <div>Amplitude: {(message.parameters.amplitude * 100).toFixed(0)}%</div>
+                            </div>
+                          )}
+                          <p className="text-xs opacity-60 mt-1">
+                            {message.timestamp.toLocaleTimeString()}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Input Area */}
+          <div className="px-6 py-4 border-t space-y-3">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={currentPrompt}
+                onChange={(e) => setCurrentPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleGenerateAI();
+                  }
+                }}
+                placeholder="Describe the sound you want (e.g., 'punchy bass for house music')..."
+                className="flex-1 px-4 py-2 rounded-lg bg-background border border-input focus:outline-none focus:ring-2 focus:ring-ring"
+                disabled={isGenerating}
+              />
+              <Button
+                onClick={handleGenerateAI}
+                disabled={isGenerating || !currentPrompt.trim()}
+                size="lg"
+              >
+                {isGenerating ? (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            </div>
+            {aiMessages.length > 0 && (
+              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                <span>{aiMessages.length} message{aiMessages.length !== 1 ? 's' : ''} in history</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearAiHistory}
+                  className="h-7 text-xs"
+                >
+                  Clear History
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Waveform Display */}
       <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
