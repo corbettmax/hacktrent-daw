@@ -38,7 +38,7 @@ A web-based Digital Audio Workstation with drum machine, wave editor, and AI-pow
 ```bash
 cd backend
 pip install -r requirements.txt
-export GOOGLE_API_KEY="your-gemini-api-key"  # Optional
+export GOOGLE_API_KEY="your-gemeni_key"  # Optional
 python server.py
 ```
 
@@ -59,7 +59,7 @@ See [QUICK_SETUP.md](./QUICK_SETUP.md) for complete deployment instructions.
 **TL;DR:**
 ```bash
 # Setup Secret Manager for API key
-echo -n "YOUR_API_KEY" | gcloud secrets create gemini-api-key --data-file=-
+echo -n "YOUR_API_KEY" | gcloud secrets create gemeni_key --data-file=-
 
 # Deploy
 git push origin main
@@ -159,7 +159,7 @@ hacktrent-daw/
 
 Store sensitive keys in Google Secret Manager:
 ```bash
-gcloud secrets create gemini-api-key --data-file=-
+gcloud secrets create gemeni_key --data-file=-
 ```
 
 See [SECRET_MANAGER_SETUP.md](./SECRET_MANAGER_SETUP.md) for details.

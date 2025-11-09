@@ -1,13 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Play, Square, Download, Wand2, Save, Upload, Music2, Send, Sparkles } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AudioEngine } from '../lib/audioEngine';
 import VirtualKeyboard from '../components/VirtualKeyboard';
+import WaveformDisplay from '../components/WaveformDisplay';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
+import AICommandPanel from '../components/WaveEditor/AICommandPanel';
+import PlaybackControls from '../components/WaveEditor/PlaybackControls';
+import WaveformSelector from '../components/WaveEditor/WaveformSelector';
+import SynthControls from '../components/WaveEditor/SynthControls';
+import SampleEditingPanel from '../components/WaveEditor/SampleEditingPanel';
+import ADSREnvelope from '../components/WaveEditor/ADSREnvelope';
+import PresetsManager from '../components/WaveEditor/PresetsManager';
+import AIHistoryModal from '../components/WaveEditor/AIHistoryModal';
 
 interface WavePreset {
   id: string;
@@ -63,7 +69,6 @@ export default function WaveEditor() {
   const [isGenerating, setIsGenerating] = useState(false);
   
   const audioEngineRef = useRef<AudioEngine | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Initialize audio engine
@@ -123,58 +128,10 @@ export default function WaveEditor() {
       });
 
       setCurrentBuffer(buffer);
-      drawWaveform(buffer);
     } catch (error) {
       console.error('Failed to generate sample:', error);
       toast.error('Failed to generate sample');
     }
-  };
-
-  const drawWaveform = (buffer: AudioBuffer) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const data = buffer.getChannelData(0);
-    const width = canvas.width;
-    const height = canvas.height;
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Draw grid
-    ctx.strokeStyle = 'rgba(100, 100, 100, 0.2)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 5; i++) {
-      const y = (height / 4) * i;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-    }
-
-    // Draw waveform
-    ctx.strokeStyle = '#3b82f6'; // Blue color
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    const step = Math.ceil(data.length / width);
-    const amp = height / 2;
-
-    for (let i = 0; i < width; i++) {
-      const min = Math.min(...Array.from({ length: step }, (_, j) => data[i * step + j] || 0));
-      const max = Math.max(...Array.from({ length: step }, (_, j) => data[i * step + j] || 0));
-      
-      if (i === 0) {
-        ctx.moveTo(i, amp - min * amp);
-      } else {
-        ctx.lineTo(i, amp - min * amp);
-      }
-      ctx.lineTo(i, amp - max * amp);
-    }
-
-    ctx.stroke();
   };
 
   const handlePlay = () => {
@@ -299,6 +256,150 @@ export default function WaveEditor() {
     });
   };
 
+  // Sample editing functions
+  const normalizeBuffer = () => {
+    if (!currentBuffer || !audioEngineRef.current) return;
+
+    const data = currentBuffer.getChannelData(0);
+    const maxVal = Math.max(...Array.from(data).map(Math.abs));
+    
+    if (maxVal === 0) return;
+
+    const normalized = data.map(v => v / maxVal);
+    const newBuffer = audioEngineRef.current.createBuffer(
+      currentBuffer.numberOfChannels,
+      currentBuffer.length,
+      currentBuffer.sampleRate
+    );
+    
+    if (!newBuffer) return;
+    newBuffer.getChannelData(0).set(normalized);
+    setCurrentBuffer(newBuffer);
+    toast.success('Sample normalized');
+  };
+
+  const reverseBuffer = () => {
+    if (!currentBuffer || !audioEngineRef.current) return;
+
+    const data = Array.from(currentBuffer.getChannelData(0)).reverse();
+    const newBuffer = audioEngineRef.current.createBuffer(
+      currentBuffer.numberOfChannels,
+      currentBuffer.length,
+      currentBuffer.sampleRate
+    );
+    
+    if (!newBuffer) return;
+    newBuffer.getChannelData(0).set(data);
+    setCurrentBuffer(newBuffer);
+    toast.success('Sample reversed');
+  };
+
+  const applyFadeIn = () => {
+    if (!currentBuffer || !audioEngineRef.current) return;
+
+    const data = currentBuffer.getChannelData(0);
+    const fadeLength = Math.floor(data.length * 0.1); // 10% fade
+    const faded = data.map((v, i) => {
+      if (i < fadeLength) {
+        return v * (i / fadeLength);
+      }
+      return v;
+    });
+
+    const newBuffer = audioEngineRef.current.createBuffer(
+      currentBuffer.numberOfChannels,
+      currentBuffer.length,
+      currentBuffer.sampleRate
+    );
+    
+    if (!newBuffer) return;
+    newBuffer.getChannelData(0).set(faded);
+    setCurrentBuffer(newBuffer);
+    toast.success('Fade in applied');
+  };
+
+  const applyFadeOut = () => {
+    if (!currentBuffer || !audioEngineRef.current) return;
+
+    const data = currentBuffer.getChannelData(0);
+    const fadeLength = Math.floor(data.length * 0.1); // 10% fade
+    const fadeStart = data.length - fadeLength;
+    const faded = data.map((v, i) => {
+      if (i > fadeStart) {
+        return v * ((data.length - i) / fadeLength);
+      }
+      return v;
+    });
+
+    const newBuffer = audioEngineRef.current.createBuffer(
+      currentBuffer.numberOfChannels,
+      currentBuffer.length,
+      currentBuffer.sampleRate
+    );
+    
+    if (!newBuffer) return;
+    newBuffer.getChannelData(0).set(faded);
+    setCurrentBuffer(newBuffer);
+    toast.success('Fade out applied');
+  };
+
+  const loadDefaultPreset = (soundType: string) => {
+    const presets: Record<string, any> = {
+      kick: {
+        waveform: 'sine' as const,
+        frequency: 60,
+        duration: 0.5,
+        amplitude: 0.8,
+        envelope: { attack: 0.001, decay: 0.2, sustain: 0.1, release: 0.2 }
+      },
+      snare: {
+        waveform: 'noise' as const,
+        frequency: 200,
+        duration: 0.15,
+        amplitude: 0.6,
+        envelope: { attack: 0.001, decay: 0.1, sustain: 0.1, release: 0.05 }
+      },
+      hihat: {
+        waveform: 'noise' as const,
+        frequency: 8000,
+        duration: 0.08,
+        amplitude: 0.4,
+        envelope: { attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.03 }
+      },
+      clap: {
+        waveform: 'noise' as const,
+        frequency: 1000,
+        duration: 0.1,
+        amplitude: 0.7,
+        envelope: { attack: 0.001, decay: 0.05, sustain: 0.2, release: 0.05 }
+      },
+      tom: {
+        waveform: 'sine' as const,
+        frequency: 120,
+        duration: 0.4,
+        amplitude: 0.7,
+        envelope: { attack: 0.005, decay: 0.2, sustain: 0.3, release: 0.15 }
+      },
+      bass: {
+        waveform: 'sawtooth' as const,
+        frequency: 55,
+        duration: 1.0,
+        amplitude: 0.6,
+        envelope: { attack: 0.01, decay: 0.1, sustain: 0.8, release: 0.3 }
+      }
+    };
+
+    const preset = presets[soundType];
+    if (preset) {
+      setWaveform(preset.waveform);
+      setFrequency(preset.frequency);
+      setDuration(preset.duration);
+      setAmplitude(preset.amplitude);
+      setEnvelope(preset.envelope);
+      toast.success(`Loaded ${soundType} preset`);
+    }
+  };
+
   const loadPresets = async () => {
     if (!identity) return;
 
@@ -402,27 +503,29 @@ export default function WaveEditor() {
   };
 
   return (
-    <div className="space-y-8">
-      {/* Title Section */}
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-primary via-accent to-primary bg-clip-text text-transparent">
-          Wave Editor
-        </h1>
-        <p className="text-muted-foreground">
-          Create and customize audio samples
-        </p>
+    <div className="space-y-6 max-w-[1400px] mx-auto">
+      {/* Header with AI Indicator */}
+      <div className="space-y-4">
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight">
+            Wave Editor
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Create and customize audio samples
+          </p>
+        </div>
+        
         {isAiGenerated && aiPrompt && (
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full text-sm">
+          <div className="flex items-center justify-center gap-3 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl">
             <Wand2 className="h-4 w-4 text-primary" />
-            <span className="text-primary font-medium">AI Generated:</span>
-            <span className="text-muted-foreground">"{aiPrompt}"</span>
+            <span className="text-sm font-medium">AI Generated:</span>
+            <span className="text-sm text-muted-foreground">"{aiPrompt}"</span>
             <button
               onClick={() => {
                 setIsAiGenerated(false);
                 setAiPrompt('');
               }}
-              className="ml-2 text-muted-foreground hover:text-foreground"
-              title="Clear AI indicator"
+              className="ml-4 text-muted-foreground hover:text-foreground transition-colors"
             >
               ✕
             </button>
@@ -430,362 +533,95 @@ export default function WaveEditor() {
         )}
       </div>
 
-      {/* Preset Manager */}
-      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Music2 className="h-5 w-5" />
-            Presets
-          </h3>
-          
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
-              placeholder="Enter preset name..."
-              className="flex-1 px-3 py-2 rounded-md bg-background border border-input"
-            />
-            <Button onClick={savePreset} disabled={!identity}>
-              <Save className="mr-2 h-4 w-4" />
-              Save Preset
-            </Button>
-          </div>
+      {/* Main Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Left Column - AI Command & Waveform */}
+        <div className="lg:col-span-2 space-y-6">
+          <AICommandPanel
+            currentPrompt={currentPrompt}
+            setCurrentPrompt={setCurrentPrompt}
+            isGenerating={isGenerating}
+            onGenerate={handleGenerateAI}
+            onOpenHistory={() => setIsAiModalOpen(true)}
+            onLoadPreset={loadDefaultPreset}
+          />
 
-          {savedPresets.length > 0 && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-muted-foreground">Saved Presets:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {savedPresets.map((preset) => (
-                  <Button
-                    key={preset.id}
-                    variant="outline"
-                    onClick={() => loadPreset(preset)}
-                    className="justify-start"
-                  >
-                    <Upload className="mr-2 h-3 w-3" />
-                    {preset.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
+          <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg p-6">
+            <h3 className="text-lg font-semibold mb-4">Waveform Visualizer</h3>
+            <WaveformDisplay audioBuffer={currentBuffer} />
+          </Card>
 
-          {!identity && (
-            <p className="text-sm text-muted-foreground">
-              Log in to save and load your custom presets
-            </p>
-          )}
+          <PlaybackControls
+            isPlaying={isPlaying}
+            hasBuffer={!!currentBuffer}
+            isLoggedIn={!!identity}
+            onPlay={handlePlay}
+            onSave={savePreset}
+            onDownload={handleDownload}
+          />
         </div>
-      </Card>
 
-      {/* Action Buttons */}
-      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          <Button
-            size="lg"
-            onClick={handlePlay}
-            disabled={isPlaying}
-            className="w-32"
-          >
-            {isPlaying ? (
-              <>
-                <Square className="mr-2 h-5 w-5" />
-                Playing
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-5 w-5" />
-                Play
-              </>
-            )}
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={() => setIsAiModalOpen(true)}
-            className="w-48"
-          >
-            <Wand2 className="mr-2 h-5 w-5" />
-            Generate with AI
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            onClick={handleDownload}
-            className="w-32"
-          >
-            <Download className="mr-2 h-5 w-5" />
-            Download
-          </Button>
+        {/* Right Column - Controls */}
+        <div className="space-y-6">
+          <WaveformSelector
+            waveform={waveform}
+            onWaveformChange={setWaveform}
+          />
+
+          <SynthControls
+            frequency={frequency}
+            amplitude={amplitude}
+            duration={duration}
+            onFrequencyChange={(value) => setFrequency(value[0])}
+            onAmplitudeChange={(value) => setAmplitude(value[0])}
+            onDurationChange={(value) => setDuration(value[0])}
+          />
+
+          <SampleEditingPanel
+            hasBuffer={!!currentBuffer}
+            onNormalize={normalizeBuffer}
+            onReverse={reverseBuffer}
+            onFadeIn={applyFadeIn}
+            onFadeOut={applyFadeOut}
+          />
         </div>
-      </Card>
+      </div>
 
-      {/* AI Generation Modal */}
-      <Dialog open={isAiModalOpen} onOpenChange={setIsAiModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col p-0">
-          <DialogHeader className="px-6 pt-6 pb-4 border-b">
-            <DialogTitle className="flex items-center gap-2 text-2xl">
-              <Sparkles className="h-6 w-6 text-primary" />
-              AI Sound Generator
-            </DialogTitle>
-            <DialogDescription>
-              Describe the sound you want and AI will generate synth parameters
-            </DialogDescription>
-          </DialogHeader>
+      {/* Bottom Section - ADSR, Presets, Keyboard */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <ADSREnvelope
+          envelope={envelope}
+          onEnvelopeChange={(key, value) => 
+            setEnvelope(prev => ({ ...prev, [key]: value[0] }))
+          }
+        />
 
-          {/* Messages Container */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-[300px] max-h-[50vh]">
-            {aiMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center space-y-4 text-muted-foreground">
-                <Sparkles className="h-12 w-12 opacity-50" />
-                <div>
-                  <p className="text-lg font-medium">Start a conversation</p>
-                  <p className="text-sm">Describe the sound you want to create</p>
-                </div>
-                <div className="grid grid-cols-1 gap-2 text-xs max-w-md">
-                  <div className="p-3 bg-muted rounded-lg text-left">
-                    <span className="font-medium">Try:</span> "deep bass kick for techno"
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg text-left">
-                    <span className="font-medium">Try:</span> "bright aggressive lead for EDM"
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg text-left">
-                    <span className="font-medium">Try:</span> "soft ethereal pad for ambient"
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                {aiMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] rounded-lg px-4 py-3 ${
-                        message.role === 'user'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        {message.role === 'assistant' && (
-                          <Sparkles className="h-4 w-4 mt-1 flex-shrink-0" />
-                        )}
-                        <div className="flex-1">
-                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                          {message.parameters && (
-                            <div className="mt-2 pt-2 border-t border-border/50 text-xs space-y-1 opacity-80">
-                              <div>Waveform: {message.parameters.waveform}</div>
-                              <div>Frequency: {message.parameters.frequency} Hz</div>
-                              <div>Duration: {message.parameters.duration}s</div>
-                              <div>Amplitude: {(message.parameters.amplitude * 100).toFixed(0)}%</div>
-                            </div>
-                          )}
-                          <p className="text-xs opacity-60 mt-1">
-                            {message.timestamp.toLocaleTimeString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </>
-            )}
-          </div>
+        <PresetsManager
+          presets={savedPresets}
+          isLoggedIn={!!identity}
+          onLoadPreset={loadPreset}
+        />
+      </div>
 
-          {/* Input Area */}
-          <div className="px-6 py-4 border-t space-y-3">
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={currentPrompt}
-                onChange={(e) => setCurrentPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleGenerateAI();
-                  }
-                }}
-                placeholder="Describe the sound you want (e.g., 'punchy bass for house music')..."
-                className="flex-1 px-4 py-2 rounded-lg bg-background border border-input focus:outline-none focus:ring-2 focus:ring-ring"
-                disabled={isGenerating}
-              />
-              <Button
-                onClick={handleGenerateAI}
-                disabled={isGenerating || !currentPrompt.trim()}
-                size="lg"
-              >
-                {isGenerating ? (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    Generate
-                  </>
-                )}
-              </Button>
-            </div>
-            {aiMessages.length > 0 && (
-              <div className="flex justify-between items-center text-xs text-muted-foreground">
-                <span>{aiMessages.length} message{aiMessages.length !== 1 ? 's' : ''} in history</span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearAiHistory}
-                  className="h-7 text-xs"
-                >
-                  Clear History
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Waveform Display */}
-      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-        <canvas
-          ref={canvasRef}
-          width={800}
-          height={200}
-          className="w-full h-[200px] rounded-lg bg-black/20"
+      {/* Virtual Keyboard */}
+      <Card className="bg-background/50 backdrop-blur border-border/50 shadow-lg">
+        <VirtualKeyboard
+          onNoteOn={handleNoteOn}
+          onNoteOff={handleNoteOff}
         />
       </Card>
 
-      {/* Virtual Keyboard */}
-      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Virtual Keyboard</h3>
-          <VirtualKeyboard onNoteOn={handleNoteOn} onNoteOff={handleNoteOff} />
-          <p className="text-xs text-muted-foreground text-center">
-            Click and hold keys to play notes with current wave settings
-          </p>
-        </div>
-      </Card>
-
-      {/* Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Waveform Selection */}
-        <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-          <h3 className="text-lg font-semibold mb-4">Waveform</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {(['sine', 'square', 'sawtooth', 'triangle', 'noise'] as const).map((type) => (
-              <Button
-                key={type}
-                variant={waveform === type ? 'default' : 'outline'}
-                onClick={() => setWaveform(type)}
-                className="capitalize"
-              >
-                {type}
-              </Button>
-            ))}
-          </div>
-        </Card>
-
-        {/* Basic Parameters */}
-        <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
-          <h3 className="text-lg font-semibold mb-4">Parameters</h3>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Frequency: {frequency} Hz
-              </label>
-              <Slider
-                value={[frequency]}
-                onValueChange={(v) => setFrequency(v[0])}
-                min={20}
-                max={2000}
-                step={1}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Duration: {duration.toFixed(2)}s
-              </label>
-              <Slider
-                value={[duration]}
-                onValueChange={(v) => setDuration(v[0])}
-                min={0.1}
-                max={2}
-                step={0.1}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Amplitude: {(amplitude * 100).toFixed(0)}%
-              </label>
-              <Slider
-                value={[amplitude]}
-                onValueChange={(v) => setAmplitude(v[0])}
-                min={0}
-                max={1}
-                step={0.01}
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Envelope */}
-        <Card className="p-6 bg-card/50 backdrop-blur border-primary/20 md:col-span-2">
-          <h3 className="text-lg font-semibold mb-4">ADSR Envelope</h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Attack: {envelope.attack.toFixed(2)}s
-              </label>
-              <Slider
-                value={[envelope.attack]}
-                onValueChange={(v) => setEnvelope({ ...envelope, attack: v[0] })}
-                min={0.001}
-                max={1}
-                step={0.001}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Decay: {envelope.decay.toFixed(2)}s
-              </label>
-              <Slider
-                value={[envelope.decay]}
-                onValueChange={(v) => setEnvelope({ ...envelope, decay: v[0] })}
-                min={0.001}
-                max={1}
-                step={0.001}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Sustain: {(envelope.sustain * 100).toFixed(0)}%
-              </label>
-              <Slider
-                value={[envelope.sustain]}
-                onValueChange={(v) => setEnvelope({ ...envelope, sustain: v[0] })}
-                min={0}
-                max={1}
-                step={0.01}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Release: {envelope.release.toFixed(2)}s
-              </label>
-              <Slider
-                value={[envelope.release]}
-                onValueChange={(v) => setEnvelope({ ...envelope, release: v[0] })}
-                min={0.001}
-                max={2}
-                step={0.001}
-              />
-            </div>
-          </div>
-        </Card>
-      </div>
+      {/* AI History Modal */}
+      <AIHistoryModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        messages={aiMessages}
+        currentPrompt={currentPrompt}
+        setCurrentPrompt={setCurrentPrompt}
+        isGenerating={isGenerating}
+        onGenerate={handleGenerateAI}
+      />
     </div>
   );
 }

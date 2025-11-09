@@ -33,16 +33,11 @@ export default function PresetManager({ currentSettings, onLoadPreset }: PresetM
       return;
     }
 
-    const preset: SynthPreset = {
-      name: presetName.trim(),
-      oscillators: currentSettings.oscillators,
-      envelope: currentSettings.envelope,
-      filter: currentSettings.filter,
-      effects: currentSettings.effects
-    };
-
     try {
-      await savePreset.mutateAsync(preset);
+      await savePreset.mutateAsync({ 
+        name: presetName.trim(), 
+        settings: currentSettings 
+      });
       toast.success(`Preset "${presetName}" saved successfully`);
       setPresetName('');
       refetch();
@@ -83,10 +78,10 @@ export default function PresetManager({ currentSettings, onLoadPreset }: PresetM
             <Input
               id="preset-name"
               value={presetName}
-              onChange={(e) => setPresetName(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPresetName(e.target.value)}
               placeholder="Enter preset name"
             />
-            <Button onClick={handleSave} disabled={savePreset.isPending} size="icon">
+            <Button onClick={handleSave} disabled={savePreset.isPending} size="sm">
               <Save className="w-4 h-4" />
             </Button>
           </div>
@@ -108,7 +103,7 @@ export default function PresetManager({ currentSettings, onLoadPreset }: PresetM
                   >
                     <span className="text-sm font-medium truncate flex-1">{name}</span>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       onClick={() => handleLoad(name)}
                       disabled={getPreset.isPending}

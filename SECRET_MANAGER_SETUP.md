@@ -24,8 +24,8 @@ gcloud services enable cloudbuild.googleapis.com
 ## Step 2: Create the Secret
 
 ```bash
-# Create a new secret named 'gemini-api-key'
-echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
+# Create a new secret named 'gemeni_key'
+echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create gemeni_key \
   --data-file=- \
   --replication-policy="automatic"
 ```
@@ -36,7 +36,7 @@ echo -n "YOUR_ACTUAL_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
 echo "YOUR_ACTUAL_GEMINI_API_KEY" > api_key.txt
 
 # Create secret from file
-gcloud secrets create gemini-api-key \
+gcloud secrets create gemeni_key \
   --data-file=api_key.txt \
   --replication-policy="automatic"
 
@@ -51,12 +51,12 @@ rm api_key.txt
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
 
 # Grant the Cloud Run service account access to the secret
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
 # Also grant Cloud Build service account access (for deployment)
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
@@ -68,10 +68,10 @@ gcloud secrets add-iam-policy-binding gemini-api-key \
 gcloud secrets list
 
 # View secret metadata (not the actual value)
-gcloud secrets describe gemini-api-key
+gcloud secrets describe gemeni_key
 
 # Access the secret value (to verify it's correct)
-gcloud secrets versions access latest --secret="gemini-api-key"
+gcloud secrets versions access latest --secret="gemeni_key"
 ```
 
 ## Step 5: Deploy with Cloud Build
@@ -109,7 +109,7 @@ If you need to update the API key:
 
 ```bash
 # Add a new version
-echo -n "NEW_API_KEY" | gcloud secrets versions add gemini-api-key --data-file=-
+echo -n "NEW_API_KEY" | gcloud secrets versions add gemeni_key --data-file=-
 
 # Cloud Run will automatically use the latest version
 # You may need to redeploy for the change to take effect:
@@ -147,14 +147,14 @@ gcloud projects add-iam-policy-binding PROJECT_ID \
 gcloud secrets list
 
 # Check the secret name matches in cloudbuild.yaml
-# It should be: gemini-api-key
+# It should be: gemeni_key
 ```
 
 ### Cloud Build Can't Access Secret
 ```bash
 # Grant Cloud Build service account access
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```
@@ -184,7 +184,7 @@ Or use the gcloud CLI to access the secret:
 
 ```bash
 # Fetch secret and set as environment variable
-export GOOGLE_API_KEY=$(gcloud secrets versions access latest --secret="gemini-api-key")
+export GOOGLE_API_KEY=$(gcloud secrets versions access latest --secret="gemeni_key")
 
 # Run the server
 python backend/server.py

@@ -112,6 +112,11 @@ export class AudioEngine {
     source.start();
   }
 
+  createBuffer(numberOfChannels: number, length: number, sampleRate: number): AudioBuffer | null {
+    if (!this.audioContext) return null;
+    return this.audioContext.createBuffer(numberOfChannels, length, sampleRate);
+  }
+
   /**
    * Creates an audio sample from AI API response
    * @param apiUrl - The API endpoint to call
