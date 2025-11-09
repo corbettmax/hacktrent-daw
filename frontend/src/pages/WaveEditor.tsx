@@ -2,11 +2,30 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Download, Wand2 } from 'lucide-react';
+import { Play, Square, Download, Wand2, Save, Upload, Music2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AudioEngine } from '../lib/audioEngine';
+import VirtualKeyboard from '../components/VirtualKeyboard';
+import { useInternetIdentity } from '../hooks/useInternetIdentity';
+
+interface WavePreset {
+  id: string;
+  name: string;
+  waveform: 'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise';
+  frequency: number;
+  duration: number;
+  amplitude: number;
+  envelope: {
+    attack: number;
+    decay: number;
+    sustain: number;
+    release: number;
+  };
+  createdAt: Date;
+}
 
 export default function WaveEditor() {
+  const { identity } = useInternetIdentity();
   const [isPlaying, setIsPlaying] = useState(false);
   const [waveform, setWaveform] = useState<'sine' | 'square' | 'sawtooth' | 'triangle' | 'noise'>('sine');
   const [frequency, setFrequency] = useState(440);
@@ -19,6 +38,8 @@ export default function WaveEditor() {
     release: 0.2,
   });
   const [currentBuffer, setCurrentBuffer] = useState<AudioBuffer | null>(null);
+  const [savedPresets, setSavedPresets] = useState<WavePreset[]>([]);
+  const [presetName, setPresetName] = useState('');
   
   const audioEngineRef = useRef<AudioEngine | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -34,6 +55,13 @@ export default function WaveEditor() {
 
     initAudio();
   }, []);
+
+  // Load saved presets
+  useEffect(() => {
+    if (identity) {
+      loadPresets();
+    }
+  }, [identity]);
 
   // Generate sample when parameters change
   useEffect(() => {
@@ -131,6 +159,106 @@ export default function WaveEditor() {
     });
   };
 
+  const loadPresets = async () => {
+    if (!identity) return;
+
+    try {
+      const user = identity.getPrincipal().toString();
+      const response = await fetch(`/pattern/${user}/wave-presets`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data && Array.isArray(data)) {
+          setSavedPresets(data.map((preset: any, index: number) => ({
+            id: `preset-${index}`,
+            name: preset.name || `Preset ${index + 1}`,
+            waveform: preset.waveform,
+            frequency: preset.frequency,
+            duration: preset.duration,
+            amplitude: preset.amplitude,
+            envelope: preset.envelope,
+            createdAt: new Date(preset.createdAt || Date.now()),
+          })));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load presets:', error);
+    }
+  };
+
+  const savePreset = async () => {
+    if (!identity) {
+      toast.error('Please log in to save presets');
+      return;
+    }
+
+    if (!presetName.trim()) {
+      toast.error('Please enter a preset name');
+      return;
+    }
+
+    try {
+      const user = identity.getPrincipal().toString();
+      const response = await fetch(`/pattern/${user}/wave-presets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: presetName,
+          waveform,
+          frequency,
+          duration,
+          amplitude,
+          envelope,
+          createdAt: new Date().toISOString(),
+        }),
+      });
+
+      if (response.ok) {
+        toast.success(`Preset "${presetName}" saved!`);
+        setPresetName('');
+        loadPresets();
+      } else {
+        toast.error('Failed to save preset');
+      }
+    } catch (error) {
+      console.error('Failed to save preset:', error);
+      toast.error('Failed to save preset');
+    }
+  };
+
+  const loadPreset = (preset: WavePreset) => {
+    setWaveform(preset.waveform);
+    setFrequency(preset.frequency);
+    setDuration(preset.duration);
+    setAmplitude(preset.amplitude);
+    setEnvelope(preset.envelope);
+    toast.success(`Loaded preset: ${preset.name}`);
+  };
+
+  const handleNoteOn = async (noteFrequency: number) => {
+    if (!audioEngineRef.current) return;
+
+    try {
+      // Generate a sample at the keyboard frequency
+      const buffer = await audioEngineRef.current.createSampleFromJSON({
+        waveform,
+        frequency: noteFrequency,
+        duration: 0.5,
+        amplitude,
+        envelope,
+        harmonics: [],
+      });
+
+      audioEngineRef.current.playSound(buffer, 1);
+    } catch (error) {
+      console.error('Failed to play note:', error);
+    }
+  };
+
+  const handleNoteOff = () => {
+    // Note off handled by envelope
+  };
+
   return (
     <div className="space-y-8">
       {/* Title Section */}
@@ -142,6 +270,55 @@ export default function WaveEditor() {
           Create and customize audio samples
         </p>
       </div>
+
+      {/* Preset Manager */}
+      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Music2 className="h-5 w-5" />
+            Presets
+          </h3>
+          
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              placeholder="Enter preset name..."
+              className="flex-1 px-3 py-2 rounded-md bg-background border border-input"
+            />
+            <Button onClick={savePreset} disabled={!identity}>
+              <Save className="mr-2 h-4 w-4" />
+              Save Preset
+            </Button>
+          </div>
+
+          {savedPresets.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium text-muted-foreground">Saved Presets:</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {savedPresets.map((preset) => (
+                  <Button
+                    key={preset.id}
+                    variant="outline"
+                    onClick={() => loadPreset(preset)}
+                    className="justify-start"
+                  >
+                    <Upload className="mr-2 h-3 w-3" />
+                    {preset.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {!identity && (
+            <p className="text-sm text-muted-foreground">
+              Log in to save and load your custom presets
+            </p>
+          )}
+        </div>
+      </Card>
 
       {/* Action Buttons */}
       <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
@@ -193,6 +370,17 @@ export default function WaveEditor() {
           height={200}
           className="w-full h-[200px] rounded-lg bg-black/20"
         />
+      </Card>
+
+      {/* Virtual Keyboard */}
+      <Card className="p-6 bg-card/50 backdrop-blur border-primary/20">
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Virtual Keyboard</h3>
+          <VirtualKeyboard onNoteOn={handleNoteOn} onNoteOff={handleNoteOff} />
+          <p className="text-xs text-muted-foreground text-center">
+            Click and hold keys to play notes with current wave settings
+          </p>
+        </div>
       </Card>
 
       {/* Controls */}

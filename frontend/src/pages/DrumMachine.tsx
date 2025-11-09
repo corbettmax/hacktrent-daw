@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Upload, Music, Activity, Music2 } from 'lucide-react';
+import { Play, Square, Upload, Music, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePatternQueries } from '../hooks/useQueries';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
@@ -11,7 +11,6 @@ import Footer from '../components/Footer';
 import SequencerGrid from '../components/SequencerGrid';
 import TrackControls from '../components/TrackControls';
 import WaveEditor from './WaveEditor';
-import SynthesizerPage from './SynthesizerPage';
 import { AudioEngine } from '../lib/audioEngine';
 
 export interface DrumTrack {
@@ -22,7 +21,7 @@ export interface DrumTrack {
   volume: number;
 }
 
-type ViewMode = 'sequencer' | 'editor' | 'synthesizer';
+type ViewMode = 'sequencer' | 'editor';
 
 export default function DrumMachine() {
   const { identity } = useInternetIdentity();
@@ -224,14 +223,6 @@ export default function DrumMachine() {
                 <Activity className="mr-2 h-4 w-4" />
                 Wave Editor
               </Button>
-              <Button
-                variant={viewMode === 'synthesizer' ? 'default' : 'outline'}
-                onClick={() => setViewMode('synthesizer')}
-                className="flex-1"
-              >
-                <Music2 className="mr-2 h-4 w-4" />
-                Synthesizer
-              </Button>
             </div>
           </Card>
 
@@ -330,10 +321,8 @@ export default function DrumMachine() {
             </div>
           </Card>
             </>
-          ) : viewMode === 'editor' ? (
-            <WaveEditor />
           ) : (
-            <SynthesizerPage />
+            <WaveEditor />
           )}
         </div>
       </main>
