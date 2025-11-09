@@ -119,9 +119,62 @@ export default function WaveEditor() {
   };
 
   const handleGenerateAI = async () => {
-    toast.info('AI generation coming soon!', {
-      description: 'This feature will use AI to generate unique samples',
+    const loadingToast = toast.loading('Generating AI-powered synth parameters...', {
+      description: 'Asking Gemini to create unique sound settings',
     });
+
+    try {
+      // Prompt for user to describe the sound they want
+      const userPrompt = prompt('Describe the sound you want to generate (e.g., "deep bass kick", "bright synth lead", "ambient pad"):');
+      
+      if (!userPrompt || !userPrompt.trim()) {
+        toast.dismiss(loadingToast);
+        toast.info('Generation cancelled');
+        return;
+      }
+
+      // Call Python API endpoint
+      const response = await fetch('/api/generate-synth-params', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: userPrompt.trim(),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Update synth parameters with AI-generated values
+      if (data.waveform) setWaveform(data.waveform);
+      if (data.frequency) setFrequency(data.frequency);
+      if (data.duration) setDuration(data.duration);
+      if (data.amplitude) setAmplitude(data.amplitude);
+      if (data.envelope) {
+        setEnvelope({
+          attack: data.envelope.attack ?? envelope.attack,
+          decay: data.envelope.decay ?? envelope.decay,
+          sustain: data.envelope.sustain ?? envelope.sustain,
+          release: data.envelope.release ?? envelope.release,
+        });
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success('AI parameters generated!', {
+        description: `Created settings for: "${userPrompt}"`,
+      });
+    } catch (error) {
+      console.error('Failed to generate AI parameters:', error);
+      toast.dismiss(loadingToast);
+      toast.error('Failed to generate AI parameters', {
+        description: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   };
 
   const handleDownload = () => {
