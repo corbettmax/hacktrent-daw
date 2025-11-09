@@ -111,4 +111,194 @@ export class AudioEngine {
 
     source.start();
   }
+
+  /**
+   * Creates an audio sample from AI API response
+   * @param apiUrl - The API endpoint to call
+   * @param prompt - The prompt to send to the AI (e.g., "create a punchy kick drum")
+   * @returns AudioBuffer generated from AI parameters
+   */
+  async createSampleFromAI(apiUrl: string, prompt: string): Promise<AudioBuffer> {
+    if (!this.audioContext) throw new Error('Audio context not initialized');
+
+    try {
+      // Make API call to get audio parameters
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.statusText}`);
+      }
+
+      const aiResponse = await response.json();
+
+      // Parse AI response - expected format:
+      // {
+      //   duration: number (in seconds),
+      //   waveform: string ('sine', 'square', 'sawtooth', 'triangle', 'noise'),
+      //   frequency: number (in Hz),
+      //   envelope: { attack: number, decay: number, sustain: number, release: number },
+      //   filters: [{ type: string, frequency: number, q: number }] (optional)
+      // }
+
+      const {
+        duration = 0.5,
+        waveform = 'sine',
+        frequency = 440,
+        envelope = { attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.2 },
+        amplitude = 0.5,
+        harmonics = [] // array of { frequency: number, amplitude: number }
+      } = aiResponse;
+
+      const sampleRate = this.audioContext.sampleRate;
+      const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+      const data = buffer.getChannelData(0);
+
+      // Generate audio based on AI parameters
+      for (let i = 0; i < buffer.length; i++) {
+        const t = i / sampleRate;
+        
+        // Calculate ADSR envelope
+        let envelopeValue = 0;
+        const attackTime = envelope.attack;
+        const decayTime = envelope.attack + envelope.decay;
+        const releaseTime = duration - envelope.release;
+
+        if (t < attackTime) {
+          // Attack phase
+          envelopeValue = t / attackTime;
+        } else if (t < decayTime) {
+          // Decay phase
+          envelopeValue = 1 - ((t - attackTime) / envelope.decay) * (1 - envelope.sustain);
+        } else if (t < releaseTime) {
+          // Sustain phase
+          envelopeValue = envelope.sustain;
+        } else {
+          // Release phase
+          envelopeValue = envelope.sustain * (1 - (t - releaseTime) / envelope.release);
+        }
+
+        // Generate waveform
+        let sample = 0;
+        
+        switch (waveform.toLowerCase()) {
+          case 'sine':
+            sample = Math.sin(2 * Math.PI * frequency * t);
+            break;
+          case 'square':
+            sample = Math.sign(Math.sin(2 * Math.PI * frequency * t));
+            break;
+          case 'sawtooth':
+            sample = 2 * ((frequency * t) % 1) - 1;
+            break;
+          case 'triangle':
+            sample = 4 * Math.abs(((frequency * t) % 1) - 0.5) - 1;
+            break;
+          case 'noise':
+            sample = Math.random() * 2 - 1;
+            break;
+          default:
+            sample = Math.sin(2 * Math.PI * frequency * t);
+        }
+
+        // Add harmonics if provided
+        if (harmonics && harmonics.length > 0) {
+          for (const harmonic of harmonics) {
+            sample += Math.sin(2 * Math.PI * harmonic.frequency * t) * harmonic.amplitude;
+          }
+        }
+
+        // Apply envelope and amplitude
+        data[i] = sample * envelopeValue * amplitude;
+      }
+
+      return buffer;
+
+    } catch (error) {
+      console.error('Error creating sample from AI:', error);
+      throw new Error(`Failed to create sample from AI: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Helper method to create a sample with a predefined JSON structure (for testing)
+   * @param jsonParams - JSON object with audio parameters
+   * @returns AudioBuffer generated from parameters
+   */
+  async createSampleFromJSON(jsonParams: any): Promise<AudioBuffer> {
+    if (!this.audioContext) throw new Error('Audio context not initialized');
+
+    const {
+      duration = 0.5,
+      waveform = 'sine',
+      frequency = 440,
+      envelope = { attack: 0.01, decay: 0.1, sustain: 0.7, release: 0.2 },
+      amplitude = 0.5,
+      harmonics = []
+    } = jsonParams;
+
+    const sampleRate = this.audioContext.sampleRate;
+    const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let i = 0; i < buffer.length; i++) {
+      const t = i / sampleRate;
+      
+      // Calculate ADSR envelope
+      let envelopeValue = 0;
+      const attackTime = envelope.attack;
+      const decayTime = envelope.attack + envelope.decay;
+      const releaseTime = duration - envelope.release;
+
+      if (t < attackTime) {
+        envelopeValue = t / attackTime;
+      } else if (t < decayTime) {
+        envelopeValue = 1 - ((t - attackTime) / envelope.decay) * (1 - envelope.sustain);
+      } else if (t < releaseTime) {
+        envelopeValue = envelope.sustain;
+      } else {
+        envelopeValue = envelope.sustain * (1 - (t - releaseTime) / envelope.release);
+      }
+
+      // Generate waveform
+      let sample = 0;
+      
+      switch (waveform.toLowerCase()) {
+        case 'sine':
+          sample = Math.sin(2 * Math.PI * frequency * t);
+          break;
+        case 'square':
+          sample = Math.sign(Math.sin(2 * Math.PI * frequency * t));
+          break;
+        case 'sawtooth':
+          sample = 2 * ((frequency * t) % 1) - 1;
+          break;
+        case 'triangle':
+          sample = 4 * Math.abs(((frequency * t) % 1) - 0.5) - 1;
+          break;
+        case 'noise':
+          sample = Math.random() * 2 - 1;
+          break;
+        default:
+          sample = Math.sin(2 * Math.PI * frequency * t);
+      }
+
+      // Add harmonics if provided
+      if (harmonics && harmonics.length > 0) {
+        for (const harmonic of harmonics) {
+          sample += Math.sin(2 * Math.PI * harmonic.frequency * t) * harmonic.amplitude;
+        }
+      }
+
+      // Apply envelope and amplitude
+      data[i] = sample * envelopeValue * amplitude;
+    }
+
+    return buffer;
+  }
 }

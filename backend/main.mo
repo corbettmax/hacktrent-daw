@@ -3,6 +3,7 @@ import OrderedMap "mo:base/OrderedMap";
 import Nat "mo:base/Nat";
 import Text "mo:base/Text";
 import Iter "mo:base/Iter";
+import Actor "mo:base/Actor";
 
 actor DrumMachine {
   transient let principalMap = OrderedMap.Make<Principal>(Principal.compare);
@@ -15,27 +16,33 @@ actor DrumMachine {
   public type TrackName = Text;
 
   public func savePattern(user : Principal, patternName : Text, pattern : Pattern) : async () {
-    let userPatternsMap = switch (principalMap.get(userPatterns, user)) {
+    // For security, ignore the caller-supplied `user` parameter and use the actual caller principal.
+    let caller = Actor.caller;
+    let userPatternsMap = switch (principalMap.get(userPatterns, caller)) {
       case null { textMap.empty<Pattern>() };
       case (?existing) { existing };
     };
     let updatedPatternsMap = textMap.put(userPatternsMap, patternName, pattern);
-    userPatterns := principalMap.put(userPatterns, user, updatedPatternsMap);
+    userPatterns := principalMap.put(userPatterns, caller, updatedPatternsMap);
   };
 
   public func getPattern(user : Principal, patternName : Text) : async ?Pattern {
-    switch (principalMap.get(userPatterns, user)) {
+    // Use actual caller principal rather than trusting the supplied `user` argument.
+    let caller = Actor.caller;
+    switch (principalMap.get(userPatterns, caller)) {
       case null { null };
       case (?patternsMap) { textMap.get(patternsMap, patternName) };
     };
   };
 
   public func setTempo(user : Principal, tempo : Nat) : async () {
-    userTempos := principalMap.put(userTempos, user, tempo);
+    let caller = Actor.caller;
+    userTempos := principalMap.put(userTempos, caller, tempo);
   };
 
   public func getTempo(user : Principal) : async Nat {
-    switch (principalMap.get(userTempos, user)) {
+    let caller = Actor.caller;
+    switch (principalMap.get(userTempos, caller)) {
       case null { 120 };
       case (?tempo) { tempo };
     };
