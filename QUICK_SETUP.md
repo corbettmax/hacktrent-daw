@@ -7,7 +7,7 @@
 gcloud services enable secretmanager.googleapis.com
 
 # 2. Create the secret with your Gemini API key
-echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
+echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets create gemeni_key \
   --data-file=- \
   --replication-policy="automatic"
 
@@ -15,12 +15,12 @@ echo -n "YOUR_GEMINI_API_KEY" | gcloud secrets create gemini-api-key \
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
 
 # 4. Grant Cloud Run service account access
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
 # 5. Grant Cloud Build service account access
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 
@@ -32,7 +32,7 @@ git push origin main
 
 ```bash
 # Check if secret exists
-gcloud secrets describe gemini-api-key
+gcloud secrets describe gemeni_key
 
 # Test the deployed API
 curl -X POST https://YOUR-SERVICE-URL/api/generate-synth-params \
@@ -55,7 +55,7 @@ Frontend (WaveEditor)
 Backend (Flask server.py)
     ↓ GOOGLE_API_KEY from env
 Secret Manager
-    ↓ gemini-api-key secret
+    ↓ gemeni_key secret
 Google Gemini API
     ↓ AI-generated synth parameters
 Backend → Frontend (apply parameters)
@@ -76,7 +76,7 @@ export GOOGLE_API_KEY="your-dev-api-key"
 python backend/server.py
 
 # Option 2: Fetch from Secret Manager
-export GOOGLE_API_KEY=$(gcloud secrets versions access latest --secret="gemini-api-key")
+export GOOGLE_API_KEY=$(gcloud secrets versions access latest --secret="gemeni_key")
 python backend/server.py
 ```
 

@@ -44,13 +44,13 @@ See [SECRET_MANAGER_SETUP.md](../SECRET_MANAGER_SETUP.md) for detailed instructi
 Quick setup:
 ```bash
 # Create the secret
-echo -n "your-api-key-here" | gcloud secrets create gemini-api-key \
+echo -n "your-api-key-here" | gcloud secrets create gemeni_key \
   --data-file=- \
   --replication-policy="automatic"
 
 # Grant access to Cloud Run service account
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding gemini-api-key \
+gcloud secrets add-iam-policy-binding gemeni_key \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role="roles/secretmanager.secretAccessor"
 ```

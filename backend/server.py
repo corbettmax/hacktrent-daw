@@ -404,8 +404,224 @@ def fallback_synth_params(prompt: str) -> tuple:
     return jsonify(params), 200
 
 
+# --- NEW: AI-POWERED FULL SYNTH SETTINGS GENERATION ---
+@app.route('/api/generate-synth-settings', methods=['POST'])
+def generate_synth_settings():
+    """
+    Uses Google Gemini to generate complete synthesizer settings based on user description.
+    Returns JSON with oscillators, envelope, filter, and effects settings.
+    """
+    data = request.get_json(silent=True) or {}
+    prompt = data.get('prompt', '').strip()
+    
+    print(f"[API] generate-synth-settings called with prompt: '{prompt}'")
+    print(f"[API] USE_GEMINI: {USE_GEMINI}")
+    
+    if not prompt:
+        return jsonify({"error": "prompt required"}), 400
+    
+    if not USE_GEMINI:
+        print("[API] Using fallback - Gemini not available")
+        return fallback_synth_settings(prompt)
+    
+    try:
+        # Construct the AI prompt for Gemini
+        ai_prompt = f"""You are an expert synthesizer designer with deep knowledge of sound synthesis. Create unique and musically interesting synth settings for: "{prompt}"
+
+IMPORTANT: Be creative and vary the parameters significantly based on the description.
+
+Return ONLY a valid JSON object (no markdown, no code blocks, no explanations):
+{{
+  "oscillators": [
+    {{
+      "waveform": "sine|square|sawtooth|triangle",
+      "detune": -50 to 50 (number in cents),
+      "volume": 0.1-1.0 (number)
+    }}
+  ],
+  "envelope": {{
+    "attack": 0.001-2.0 (seconds),
+    "decay": 0.001-2.0 (seconds),
+    "sustain": 0.0-1.0 (level),
+    "release": 0.01-3.0 (seconds)
+  }},
+  "filter": {{
+    "filterType": "lowpass|highpass|bandpass|notch",
+    "cutoff": 20-20000 (Hz),
+    "resonance": 0.1-20.0 (Q factor)
+  }},
+  "effects": {{
+    "delayTime": 0.0-1.0 (seconds),
+    "delayFeedback": 0.0-0.9 (level),
+    "reverbAmount": 0.0-1.0 (level)
+  }}
+}}
+
+Synth Design Guidelines:
+
+WARM/ANALOG SOUNDS:
+- Use sine or triangle waves
+- Multiple slightly detuned oscillators (detune: ±5 to ±15 cents)
+- Slow attack (0.1-0.5s), medium-long release
+- Lowpass filter with moderate cutoff (500-2000 Hz)
+- Add subtle reverb (0.2-0.4)
+
+BRIGHT/AGGRESSIVE LEADS:
+- Sawtooth or square waves
+- Sharp attack (0.001-0.01s)
+- Highpass or lowpass with high cutoff (2000-8000 Hz)
+- High resonance (5-15) for character
+- Minimal effects or short delay
+
+PADS/AMBIENT:
+- Multiple oscillators with wider detune (±10 to ±30 cents)
+- Very slow attack (0.5-2.0s), long release (1.0-3.0s)
+- Lowpass filter with lower cutoff (400-1500 Hz)
+- Heavy reverb (0.5-1.0), longer delay
+
+PLUCKS/PERCUSSIVE:
+- Sawtooth or triangle
+- Instant attack (0.001s), fast decay (0.05-0.2s)
+- Low sustain (0.1-0.3), short release
+- Bandpass or lowpass filter
+- Minimal effects
+
+BASS SOUNDS:
+- Sine, triangle, or sawtooth
+- Single oscillator or unison with tight detune (±2 to ±5)
+- Fast attack, moderate decay/release
+- Lowpass filter with low cutoff (200-800 Hz)
+
+ANALYZE the prompt for mood, texture, and musical style, then creatively combine parameters!
+
+Return ONLY the JSON object:"""
+
+        # Call Gemini
+        response = gemini_model.generate_content(
+            ai_prompt,
+            generation_config={
+                'temperature': 0.9,
+                'top_p': 0.95,
+                'top_k': 40,
+            }
+        )
+        response_text = response.text.strip()
+        
+        print(f"[API] Gemini response: {response_text[:200]}...")
+        
+        # Clean up response
+        response_text = response_text.replace('```json', '').replace('```', '').strip()
+        
+        # Parse the JSON
+        settings = json.loads(response_text)
+        
+        # Validate and sanitize the structure
+        if 'oscillators' not in settings or not isinstance(settings['oscillators'], list):
+            settings['oscillators'] = [{"waveform": "sine", "detune": 0, "volume": 0.5}]
+        
+        if 'envelope' not in settings:
+            settings['envelope'] = {"attack": 0.1, "decay": 0.2, "sustain": 0.7, "release": 0.3}
+        
+        if 'filter' not in settings:
+            settings['filter'] = {"filterType": "lowpass", "cutoff": 2000, "resonance": 1.0}
+        
+        if 'effects' not in settings:
+            settings['effects'] = {"delayTime": 0.3, "delayFeedback": 0.3, "reverbAmount": 0.2}
+        
+        print(f"[API] Successfully generated synth settings")
+        return jsonify(settings), 200
+        
+    except json.JSONDecodeError as e:
+        print(f"[ERROR] JSON decode error: {e}")
+        print(f"[ERROR] Response text: {response_text}")
+        return fallback_synth_settings(prompt)
+    except Exception as e:
+        print(f"[ERROR] Error generating synth settings with Gemini: {e}")
+        return fallback_synth_settings(prompt)
+
+
+def fallback_synth_settings(prompt: str):
+    """Fallback synth settings based on keyword matching"""
+    prompt_lower = prompt.lower()
+    
+    settings = {
+        "oscillators": [
+            {"waveform": "sine", "detune": 0, "volume": 0.5}
+        ],
+        "envelope": {
+            "attack": 0.1,
+            "decay": 0.2,
+            "sustain": 0.7,
+            "release": 0.3
+        },
+        "filter": {
+            "filterType": "lowpass",
+            "cutoff": 2000,
+            "resonance": 1.0
+        },
+        "effects": {
+            "delayTime": 0.3,
+            "delayFeedback": 0.3,
+            "reverbAmount": 0.2
+        }
+    }
+    
+    # Warm/Analog
+    if any(word in prompt_lower for word in ['warm', 'analog', 'vintage', 'soft']):
+        settings['oscillators'] = [
+            {"waveform": "sine", "detune": -7, "volume": 0.5},
+            {"waveform": "triangle", "detune": 7, "volume": 0.4}
+        ]
+        settings['envelope'] = {"attack": 0.3, "decay": 0.2, "sustain": 0.8, "release": 0.5}
+        settings['filter'] = {"filterType": "lowpass", "cutoff": 1200, "resonance": 2.0}
+        settings['effects'] = {"delayTime": 0.4, "delayFeedback": 0.25, "reverbAmount": 0.35}
+    
+    # Bright/Aggressive Lead
+    elif any(word in prompt_lower for word in ['bright', 'aggressive', 'lead', 'sharp']):
+        settings['oscillators'] = [
+            {"waveform": "sawtooth", "detune": 0, "volume": 0.7},
+            {"waveform": "square", "detune": -5, "volume": 0.4}
+        ]
+        settings['envelope'] = {"attack": 0.01, "decay": 0.15, "sustain": 0.7, "release": 0.2}
+        settings['filter'] = {"filterType": "lowpass", "cutoff": 5000, "resonance": 8.0}
+        settings['effects'] = {"delayTime": 0.15, "delayFeedback": 0.2, "reverbAmount": 0.1}
+    
+    # Pad/Ambient
+    elif any(word in prompt_lower for word in ['pad', 'ambient', 'atmosphere', 'dreamy', 'ethereal']):
+        settings['oscillators'] = [
+            {"waveform": "sine", "detune": -12, "volume": 0.4},
+            {"waveform": "triangle", "detune": 12, "volume": 0.4},
+            {"waveform": "sawtooth", "detune": 0, "volume": 0.3}
+        ]
+        settings['envelope'] = {"attack": 1.2, "decay": 0.5, "sustain": 0.9, "release": 2.0}
+        settings['filter'] = {"filterType": "lowpass", "cutoff": 800, "resonance": 1.5}
+        settings['effects'] = {"delayTime": 0.6, "delayFeedback": 0.4, "reverbAmount": 0.8}
+    
+    # Bass
+    elif any(word in prompt_lower for word in ['bass', 'sub', 'low', 'deep']):
+        settings['oscillators'] = [
+            {"waveform": "sine", "detune": 0, "volume": 0.8},
+            {"waveform": "triangle", "detune": -3, "volume": 0.3}
+        ]
+        settings['envelope'] = {"attack": 0.01, "decay": 0.2, "sustain": 0.5, "release": 0.3}
+        settings['filter'] = {"filterType": "lowpass", "cutoff": 400, "resonance": 2.0}
+        settings['effects'] = {"delayTime": 0.0, "delayFeedback": 0.0, "reverbAmount": 0.05}
+    
+    # Pluck
+    elif any(word in prompt_lower for word in ['pluck', 'string', 'harp', 'percussive']):
+        settings['oscillators'] = [
+            {"waveform": "sawtooth", "detune": 0, "volume": 0.6},
+            {"waveform": "triangle", "detune": 12, "volume": 0.3}
+        ]
+        settings['envelope'] = {"attack": 0.001, "decay": 0.15, "sustain": 0.2, "release": 0.3}
+        settings['filter'] = {"filterType": "bandpass", "cutoff": 1500, "resonance": 3.0}
+        settings['effects'] = {"delayTime": 0.2, "delayFeedback": 0.15, "reverbAmount": 0.15}
+    
+    return jsonify(settings), 200
+
+
 if __name__ == '__main__':
     # Use PORT env var if provided by the host (Cloud Run sets PORT=8080)
     port = int(os.environ.get('PORT', 8080))
     print(f'DrumMachine Python backend starting on port {port}')
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)

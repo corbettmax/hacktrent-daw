@@ -29,13 +29,13 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--port=8080'
-      - '--set-secrets=GOOGLE_API_KEY=gemini-api-key:latest'
+      - '--set-secrets=GOOGLE_API_KEY=gemini_key:latest'
     id: 'deploy'
     waitFor: ['push']
 
 availableSecrets:
   secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/gemini-api-key/versions/latest
+    - versionName: projects/$PROJECT_ID/secrets/gemini_key/versions/latest
       env: 'GOOGLE_API_KEY'
 
 images:

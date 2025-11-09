@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Card } from '@/components/ui/card';
-import { Play, Square, Upload, Music, Activity } from 'lucide-react';
+import { Play, Square, Upload, Music, Activity, Radio, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePatternQueries } from '../hooks/useQueries';
 import { useInternetIdentity } from '../hooks/useInternetIdentity';
@@ -11,6 +11,8 @@ import Footer from '../components/Footer';
 import SequencerGrid from '../components/SequencerGrid';
 import TrackControls from '../components/TrackControls';
 import WaveEditor from './WaveEditor';
+import Synthesizer from '../components/Synthesizer';
+import MultitrackEditor from '../components/MultitrackEditor';
 import { AudioEngine } from '../lib/audioEngine';
 
 export interface DrumTrack {
@@ -21,7 +23,7 @@ export interface DrumTrack {
   volume: number;
 }
 
-type ViewMode = 'sequencer' | 'editor';
+type ViewMode = 'sequencer' | 'editor' | 'synthesizer' | 'multitrack';
 
 export default function DrumMachine() {
   const { identity } = useInternetIdentity();
@@ -206,11 +208,10 @@ export default function DrumMachine() {
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Navigation Tabs */}
           <Card className="p-2 bg-card/50 backdrop-blur border-primary/20">
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <Button
                 variant={viewMode === 'sequencer' ? 'default' : 'outline'}
                 onClick={() => setViewMode('sequencer')}
-                className="flex-1"
               >
                 <Music className="mr-2 h-4 w-4" />
                 Sequencer
@@ -218,10 +219,23 @@ export default function DrumMachine() {
               <Button
                 variant={viewMode === 'editor' ? 'default' : 'outline'}
                 onClick={() => setViewMode('editor')}
-                className="flex-1"
               >
                 <Activity className="mr-2 h-4 w-4" />
                 Wave Editor
+              </Button>
+              <Button
+                variant={viewMode === 'synthesizer' ? 'default' : 'outline'}
+                onClick={() => setViewMode('synthesizer')}
+              >
+                <Radio className="mr-2 h-4 w-4" />
+                Synthesizer
+              </Button>
+              <Button
+                variant={viewMode === 'multitrack' ? 'default' : 'outline'}
+                onClick={() => setViewMode('multitrack')}
+              >
+                <Layers className="mr-2 h-4 w-4" />
+                Multitrack
               </Button>
             </div>
           </Card>
@@ -321,8 +335,12 @@ export default function DrumMachine() {
             </div>
           </Card>
             </>
-          ) : (
+          ) : viewMode === 'editor' ? (
             <WaveEditor />
+          ) : viewMode === 'synthesizer' ? (
+            <Synthesizer />
+          ) : (
+            <MultitrackEditor />
           )}
         </div>
       </main>
