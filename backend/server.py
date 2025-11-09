@@ -45,7 +45,7 @@ def get_secret_value(project_id, secret_id, version_id="latest"):
 
 # Get the GCP Project ID from the environment (Cloud Run automatically sets this)
 PROJECT_ID = os.environ.get("GCP_PROJECT")
-API_KEY_SECRET_ID = "hacktrent-daw-api-key-secret"
+API_KEY_SECRET_ID = "gemini_key"
 
 # Try to get API key from Secret Manager first, fallback to env var for local dev
 GOOGLE_API_KEY = None
