@@ -27,6 +27,18 @@ try:
 except Exception:
     USE_AI = False
 
+# Google Gemini setup
+USE_GEMINI = bool(os.getenv("GOOGLE_API_KEY"))
+gemini_model = None
+try:
+    if USE_GEMINI:
+        import google.generativeai as genai
+        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+        gemini_model = genai.GenerativeModel('gemini-pro')
+except Exception as e:
+    print(f"Warning: Failed to initialize Gemini: {e}")
+    USE_GEMINI = False
+
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)  # Enable CORS for Electron/browser access
 
@@ -184,6 +196,157 @@ def command_agent():
     # no key: use rules
     plan = parse_command(text)
     return jsonify({"plan": plan, "source": "rules"})
+
+
+# --- NEW: AI-POWERED SYNTH PARAMETER GENERATION ---
+@app.route('/api/generate-synth-params', methods=['POST'])
+def generate_synth_params():
+    """
+    Uses Google Gemini to generate synth parameters based on user description.
+    Returns JSON with waveform, frequency, duration, amplitude, and envelope settings.
+    """
+    data = request.get_json(silent=True) or {}
+    prompt = data.get('prompt', '').strip()
+    
+    if not prompt:
+        return jsonify({"error": "prompt required"}), 400
+    
+    if not USE_GEMINI:
+        # Fallback to sensible defaults based on simple keyword matching
+        return fallback_synth_params(prompt)
+    
+    try:
+        # Construct the AI prompt for Gemini
+        ai_prompt = f"""You are a synthesizer parameter expert. Generate synth parameters for the following sound description: "{prompt}"
+
+Return ONLY a valid JSON object with these exact fields (no markdown, no code blocks):
+{{
+  "waveform": "sine|square|sawtooth|triangle|noise",
+  "frequency": 20-2000 (number in Hz),
+  "duration": 0.1-2.0 (number in seconds),
+  "amplitude": 0.0-1.0 (number),
+  "envelope": {{
+    "attack": 0.001-1.0 (number in seconds),
+    "decay": 0.001-1.0 (number in seconds),
+    "sustain": 0.0-1.0 (number, percentage),
+    "release": 0.001-2.0 (number in seconds)
+  }}
+}}
+
+Guidelines:
+- Bass sounds: use sine or triangle, low frequency (40-150 Hz), long release
+- Lead sounds: use sawtooth or square, mid frequency (200-800 Hz), short attack
+- Pad sounds: use multiple waveforms, long attack/release
+- Percussion: use noise or square, short duration, fast attack/release
+- Bright sounds: higher frequency, faster attack
+- Soft sounds: sine wave, slower attack, longer release
+
+Return ONLY the JSON object, nothing else."""
+
+        # Call Gemini
+        response = gemini_model.generate_content(ai_prompt)
+        response_text = response.text.strip()
+        
+        # Clean up response (remove markdown code blocks if present)
+        response_text = response_text.replace('```json', '').replace('```', '').strip()
+        
+        # Parse the JSON
+        params = json.loads(response_text)
+        
+        # Validate the structure
+        required_fields = ['waveform', 'frequency', 'duration', 'amplitude', 'envelope']
+        for field in required_fields:
+            if field not in params:
+                raise ValueError(f"Missing required field: {field}")
+        
+        envelope_fields = ['attack', 'decay', 'sustain', 'release']
+        for field in envelope_fields:
+            if field not in params['envelope']:
+                raise ValueError(f"Missing envelope field: {field}")
+        
+        # Return the generated parameters
+        return jsonify(params), 200
+        
+    except json.JSONDecodeError as e:
+        print(f"JSON parse error from Gemini response: {e}")
+        print(f"Response was: {response_text if 'response_text' in locals() else 'N/A'}")
+        return fallback_synth_params(prompt)
+    except Exception as e:
+        print(f"Error generating synth params with Gemini: {e}")
+        return fallback_synth_params(prompt)
+
+
+def fallback_synth_params(prompt: str) -> tuple:
+    """
+    Fallback synth parameter generation using simple keyword matching.
+    """
+    prompt_lower = prompt.lower()
+    
+    # Default params
+    params = {
+        "waveform": "sine",
+        "frequency": 440,
+        "duration": 0.5,
+        "amplitude": 0.7,
+        "envelope": {
+            "attack": 0.01,
+            "decay": 0.1,
+            "sustain": 0.7,
+            "release": 0.3
+        }
+    }
+    
+    # Bass sounds
+    if any(word in prompt_lower for word in ['bass', 'kick', 'sub', 'low', 'deep']):
+        params['waveform'] = 'sine'
+        params['frequency'] = 60
+        params['duration'] = 1.0
+        params['envelope']['attack'] = 0.001
+        params['envelope']['decay'] = 0.2
+        params['envelope']['sustain'] = 0.3
+        params['envelope']['release'] = 0.8
+    
+    # Lead sounds
+    elif any(word in prompt_lower for word in ['lead', 'melody', 'synth', 'bright']):
+        params['waveform'] = 'sawtooth'
+        params['frequency'] = 440
+        params['duration'] = 0.8
+        params['envelope']['attack'] = 0.01
+        params['envelope']['decay'] = 0.1
+        params['envelope']['sustain'] = 0.8
+        params['envelope']['release'] = 0.2
+    
+    # Pad sounds
+    elif any(word in prompt_lower for word in ['pad', 'ambient', 'atmosphere', 'soft']):
+        params['waveform'] = 'triangle'
+        params['frequency'] = 220
+        params['duration'] = 2.0
+        params['envelope']['attack'] = 0.5
+        params['envelope']['decay'] = 0.3
+        params['envelope']['sustain'] = 0.9
+        params['envelope']['release'] = 1.5
+    
+    # Percussion sounds
+    elif any(word in prompt_lower for word in ['percussion', 'hit', 'snare', 'clap', 'snap']):
+        params['waveform'] = 'noise'
+        params['frequency'] = 200
+        params['duration'] = 0.2
+        params['envelope']['attack'] = 0.001
+        params['envelope']['decay'] = 0.05
+        params['envelope']['sustain'] = 0.2
+        params['envelope']['release'] = 0.1
+    
+    # Pluck sounds
+    elif any(word in prompt_lower for word in ['pluck', 'string', 'guitar', 'harp']):
+        params['waveform'] = 'sawtooth'
+        params['frequency'] = 330
+        params['duration'] = 0.6
+        params['envelope']['attack'] = 0.001
+        params['envelope']['decay'] = 0.3
+        params['envelope']['sustain'] = 0.3
+        params['envelope']['release'] = 0.4
+    
+    return jsonify(params), 200
 
 
 if __name__ == '__main__':

@@ -9,4 +9,24 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/pattern': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/tempo': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/defaultPattern': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 });
