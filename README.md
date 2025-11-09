@@ -5,7 +5,7 @@ A web-based Digital Audio Workstation with drum machine, wave editor, and AI-pow
 ## Features
 
 ### 🥁 Drum Machine
-- 16-step sequencer with 4 tracks
+- 16-step sequencer with configurable tracks
 - Built-in drum samples (kick, snare, hi-hat, clap)
 - Adjustable tempo (40-220 BPM)
 - Save and load patterns
